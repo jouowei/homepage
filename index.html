@@ -11,6 +11,34 @@
 <meta property="og:type" content="profile">
 <link rel="stylesheet" href="assets/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230d0f12'/><path d='M28 70V30h10v16h24V30h10v40H62V55H38v15z' fill='%23d4884a'/></svg>">
+<script>
+/* Runs before first paint. Sets theme and language so neither flashes, and
+   arms a dead-man switch: the scroll-reveal animation starts elements at
+   opacity 0, so if assets/main.js never arrives the page would be invisible.
+   If main.js has not checked in shortly, drop the .js class and show
+   everything unconditionally. The page must never depend on JS to be read. */
+(function () {
+  var r = document.documentElement;
+  r.classList.add('js');
+
+  try {
+    var t = localStorage.getItem('cwh-theme');
+    if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
+  } catch (e) {}
+
+  var l = null;
+  try { l = localStorage.getItem('cwh-lang'); } catch (e) {}
+  if (l !== 'zh' && l !== 'en') {
+    l = (navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+  }
+  r.setAttribute('data-lang', l);
+  r.setAttribute('lang', l === 'zh' ? 'zh-Hant' : 'en');
+
+  setTimeout(function () {
+    if (!window.__cwhReady) r.classList.remove('js');
+  }, 1500);
+})();
+</script>
 </head>
 <body>
 

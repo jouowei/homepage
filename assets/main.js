@@ -4,11 +4,14 @@
 
   var root = document.documentElement;
 
-  /* ---------- theme ---------- */
+  /* Tell the head script this file arrived, so it leaves the .js class in
+     place and the reveal animation stays on. */
+  window.__cwhReady = true;
+
+  /* ---------- theme ----------
+     The stored theme was already applied by the head script; this block only
+     wires up the toggle. */
   var STORE = 'cwh-theme';
-  var stored = null;
-  try { stored = localStorage.getItem(STORE); } catch (e) { /* private mode */ }
-  if (stored === 'light' || stored === 'dark') root.setAttribute('data-theme', stored);
 
   function currentTheme() {
     var explicit = root.getAttribute('data-theme');
@@ -26,30 +29,16 @@
   }
 
   /* ---------- language ----------
-     Both languages are in the DOM; CSS hides the inactive one.
-     Default follows the browser, with Chinese as the fallback. */
+     Both languages are in the DOM; CSS hides the inactive one. The initial
+     choice was already made by the head script, so this only handles the
+     toggle. */
   var LANG_STORE = 'cwh-lang';
-  var TITLES = {
-    zh: 'Chen-Wei Hsiung',
-    en: 'Chen-Wei Hsiung'
-  };
   var HTML_LANG = { zh: 'zh-Hant', en: 'en' };
-
-  var storedLang = null;
-  try { storedLang = localStorage.getItem(LANG_STORE); } catch (e) { /* private mode */ }
-
-  function detectLang() {
-    var nav = (navigator.language || 'zh').toLowerCase();
-    return nav.indexOf('zh') === 0 ? 'zh' : 'en';
-  }
 
   function applyLang(lang) {
     root.setAttribute('data-lang', lang);
     root.setAttribute('lang', HTML_LANG[lang]);
-    document.title = TITLES[lang];
   }
-
-  applyLang(storedLang === 'zh' || storedLang === 'en' ? storedLang : detectLang());
 
   var langBtn = document.getElementById('langToggle');
   if (langBtn) {
