@@ -25,6 +25,41 @@
     });
   }
 
+  /* ---------- language ----------
+     Both languages are in the DOM; CSS hides the inactive one.
+     Default follows the browser, with Chinese as the fallback. */
+  var LANG_STORE = 'cwh-lang';
+  var TITLES = {
+    zh: 'Chen-Wei Hsiung',
+    en: 'Chen-Wei Hsiung'
+  };
+  var HTML_LANG = { zh: 'zh-Hant', en: 'en' };
+
+  var storedLang = null;
+  try { storedLang = localStorage.getItem(LANG_STORE); } catch (e) { /* private mode */ }
+
+  function detectLang() {
+    var nav = (navigator.language || 'zh').toLowerCase();
+    return nav.indexOf('zh') === 0 ? 'zh' : 'en';
+  }
+
+  function applyLang(lang) {
+    root.setAttribute('data-lang', lang);
+    root.setAttribute('lang', HTML_LANG[lang]);
+    document.title = TITLES[lang];
+  }
+
+  applyLang(storedLang === 'zh' || storedLang === 'en' ? storedLang : detectLang());
+
+  var langBtn = document.getElementById('langToggle');
+  if (langBtn) {
+    langBtn.addEventListener('click', function () {
+      var next = root.getAttribute('data-lang') === 'zh' ? 'en' : 'zh';
+      applyLang(next);
+      try { localStorage.setItem(LANG_STORE, next); } catch (e) { /* ignore */ }
+    });
+  }
+
   /* ---------- year ---------- */
   var year = document.getElementById('year');
   if (year) year.textContent = String(new Date().getFullYear());

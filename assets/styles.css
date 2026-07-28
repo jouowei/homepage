@@ -64,6 +64,24 @@
 
 * { box-sizing: border-box; }
 
+/* ───────────── bilingual ─────────────
+   Both languages ship in the markup; the inactive one is removed from the
+   box tree entirely, so it also stops incrementing list counters. */
+:root[data-lang="zh"] [lang="en"] { display: none; }
+:root[data-lang="en"] [lang="zh"] { display: none; }
+/* Before JS sets data-lang, show zh only, so nothing flashes doubled. */
+:root:not([data-lang]) [lang="en"] { display: none; }
+
+/* Escape hatch: content whose own language is the opposite of the mode it
+   belongs to, e.g. the English translation shown under the Chinese headline.
+   Declared after the rules above so it wins on equal specificity. */
+:root[data-lang="zh"] .when-en,
+:root:not([data-lang]) .when-en { display: none; }
+:root[data-lang="en"] .when-zh { display: none; }
+:root[data-lang="zh"] .when-zh,
+:root:not([data-lang]) .when-zh,
+:root[data-lang="en"] .when-en { display: block; }
+
 html { scroll-behavior: smooth; scroll-padding-top: 82px; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
@@ -122,6 +140,18 @@ a { color: inherit; }
 }
 .topnav a:hover { color: var(--text); }
 .topnav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.toggles { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.lang-toggle {
+  height: 34px; min-width: 40px; padding: 0 11px;
+  border: 1px solid var(--line); border-radius: 17px;
+  background: transparent; cursor: pointer; color: var(--text-dim);
+  font-family: var(--mono); font-size: 12px;
+  letter-spacing: .08em; line-height: 1;
+  transition: border-color .2s, color .2s, background .2s;
+}
+.lang-toggle:hover { border-color: var(--accent); color: var(--accent); background: var(--surface); }
 
 .theme-toggle {
   flex-shrink: 0;
