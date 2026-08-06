@@ -1,0 +1,5 @@
+# 實際的報表、LINE 匯出檔與設定都含有員工姓名，不進版控
+inputs/*
+outputs/*
+!inputs/.gitkeep
+!outputs/.gitkeep
