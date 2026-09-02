@@ -93,7 +93,21 @@ def resolve_year(month, base_year, base_month):
     return base_year
 
 
-def parse_roster(path, group, base_year, base_month, aliases, report):
+def apply_plate_fixes(date, plate, name, fixes, report):
+    """套用「某人的車號被打錯」的修正規則，回傳更正後的車號代碼。"""
+    for fix in fixes:
+        if fix["司機"] != name or str(fix["誤植"]) != plate:
+            continue
+        if str(fix.get("起", "")) and date < str(fix["起"]):
+            continue
+        if str(fix.get("迄", "")) and date > str(fix["迄"]):
+            continue
+        report.append("  車號修正 %s %s：%s → %s" % (date, name, plate, fix["正確"]))
+        return str(fix["正確"])
+    return plate
+
+
+def parse_roster(path, group, base_year, base_month, aliases, plate_fixes, report):
     """回傳 {yyyymmdd: [(車號代碼, 司機), ...]}；同日重複公布時只留最後一次。"""
     messages = read_messages(path)
     style = sniff_format(messages)
@@ -111,6 +125,7 @@ def parse_roster(path, group, base_year, base_month, aliases, report):
                 break
         if head_at is None:
             continue
+        date = "%04d%02d%02d" % (resolve_year(month, base_year, base_month), month, day)
 
         rows = []
         for line in msg[head_at + 1:]:
@@ -119,13 +134,13 @@ def parse_roster(path, group, base_year, base_month, aliases, report):
             hit = match_entry(line, style)
             if hit:
                 plate, name = hit
-                rows.append((plate, aliases.get(name, name)))
+                name = aliases.get(name, name)
+                rows.append((apply_plate_fixes(date, plate, name, plate_fixes, report), name))
             else:
                 report.append("  未解析 %d/%d：%r" % (month, day, line))
         if not rows:
             continue
 
-        date = "%04d%02d%02d" % (resolve_year(month, base_year, base_month), month, day)
         if date in rosters and dict(rosters[date]) != dict(rows):
             report.append("  %s 出勤表有更正，採用最後一次公布" % date)
         rosters[date] = rows
@@ -160,15 +175,19 @@ def build_code_map(plates, report):
 # ---------------------------------------------------------------- 主流程
 
 def load_settings(input_dir, report):
-    """選用的 設定.json：{"aliases": {...}, "overrides": [...]}。"""
+    """選用的 設定.json，四個區塊都可以不寫。"""
     path = os.path.join(input_dir, "設定.json")
     if not os.path.exists(path):
-        return {}, []
+        return {}, [], [], []
     with open(path, encoding="utf-8-sig") as fh:
         cfg = json.load(fh)
-    report.append("套用 設定.json：別名 %d 筆、人工修正 %d 筆"
-                  % (len(cfg.get("aliases", {})), len(cfg.get("overrides", []))))
-    return cfg.get("aliases", {}), cfg.get("overrides", [])
+    aliases = cfg.get("aliases", {})
+    fixes = cfg.get("車號修正", [])
+    fixed = cfg.get("固定司機", [])
+    overrides = cfg.get("overrides", [])
+    report.append("套用 設定.json：別名 %d、車號修正 %d、固定司機 %d、人工修正 %d"
+                  % (len(aliases), len(fixes), len(fixed), len(overrides)))
+    return aliases, fixes, fixed, overrides
 
 
 def main():
@@ -198,7 +217,7 @@ def main():
         sys.exit("inputs 資料夾裡沒有任何 .txt 出勤名單")
 
     report = ["=== 日報表司機對應檢核報告 ===", ""]
-    aliases, overrides = load_settings(input_dir, report)
+    aliases, plate_fixes, fixed_drivers, overrides = load_settings(input_dir, report)
 
     book_path = os.path.join(input_dir, books[0])
     report.append("日報表：%s" % books[0])
@@ -222,8 +241,8 @@ def main():
     roster = OrderedDict()
     for name in texts:
         group = os.path.splitext(name)[0]
-        for date, rows in parse_roster(os.path.join(input_dir, name), group,
-                                       base_year, base_month, aliases, report).items():
+        for date, rows in parse_roster(os.path.join(input_dir, name), group, base_year,
+                                       base_month, aliases, plate_fixes, report).items():
             for code, driver in rows:
                 key = (date, code)
                 if key in roster and roster[key][0] != driver:
@@ -261,7 +280,14 @@ def main():
     if not doubled:
         report.append("  （無）")
 
+    # 固定司機：整台車包給一個人、名單上從來不會出現的，用車號代碼指定
+    fixed_by_code = {}
+    for item in fixed_drivers:
+        code = plate_code(item["車號"]) or str(item["車號"])
+        fixed_by_code[code] = aliases.get(item["司機"], item["司機"])
+
     filled = 0
+    fixed_filled = Counter()
     used = set()
     driver_days = Counter()
     unmatched_activity = Counter()
@@ -270,12 +296,19 @@ def main():
         date = ws.cell(r, args.date_col).value
         if not plate or not date:
             continue
-        key = (str(date), code_of_plate.get(plate, ""))
-        hit = roster.get(key)
+        code = code_of_plate.get(plate, "")
+        hit = roster.get((str(date), code))
         if hit:
             ws.cell(r, args.driver_col).value = hit[0]
             driver_days[hit[0]] += 1
-            used.add(key)
+            used.add((str(date), code))
+            filled += 1
+        elif code in fixed_by_code and ws.cell(r, args.work_col).value:
+            # 固定司機沒有出勤名單可查，所以只填有行駛紀錄的日子
+            driver = fixed_by_code[code]
+            ws.cell(r, args.driver_col).value = driver
+            driver_days[driver] += 1
+            fixed_filled[plate] += 1
             filled += 1
         elif ws.cell(r, args.work_col).value:
             unmatched_activity[plate] += 1
@@ -285,9 +318,15 @@ def main():
         "",
         "資料列 %d，已填司機 %d（%.1f%%），空白 %d" % (total, filled, filled * 100.0 / total, total - filled),
         "司機共 %d 位" % len(driver_days),
-        "",
-        "--- 有行駛紀錄但出勤名單沒列到的車輛 ---",
     ]
+    if fixed_by_code:
+        report += ["", "--- 固定司機（依設定填入，只填有行駛紀錄的日子） ---"]
+        for plate, days in sorted(fixed_filled.items()):
+            report.append("  %-10s %s %d 天" % (plate, fixed_by_code[code_of_plate[plate]], days))
+        for code, driver in fixed_by_code.items():
+            if code not in plate_of_code:
+                report.append("  設定的車號 %s（%s）不在日報表中" % (code, driver))
+    report += ["", "--- 有行駛紀錄但出勤名單沒列到的車輛 ---"]
     for plate, days in sorted(unmatched_activity.items(), key=lambda x: (-x[1], x[0])):
         report.append("  %-10s %d 天" % (plate, days))
 
