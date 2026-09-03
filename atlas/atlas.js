@@ -191,7 +191,20 @@
   var graph = (function () {
     var svg = $('#graphSvg'), g, edgeLayer, nodeLayer, built = false;
     var W = 1200, H = 900, nodes = [], visibleTypes = {};
-    var tx = 0, ty = 0, scale = 1;
+    var tx = 0, ty = 0, scale = 1, curEdges = [];
+    function pathD(a, b) {
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - Math.abs(b.x - a.x) * .08;
+      return 'M' + a.x + ',' + a.y + ' Q' + mx + ',' + my + ' ' + b.x + ',' + b.y;
+    }
+    function toSvg(clientX, clientY) {
+      var rect = svg.getBoundingClientRect(), s = rect.width / W;
+      return { x: ((clientX - rect.left) / s - tx) / scale, y: ((clientY - rect.top) / s - ty) / scale };
+    }
+    function moveNode(n, x, y) {
+      n.x = x; n.y = y;
+      n.el.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+      curEdges.forEach(function (e) { if (e.a === n.id || e.b === n.id) e.el.setAttribute('d', pathD(e.na, e.nb)); });
+    }
     Object.keys(TYPES).forEach(function (t) { visibleTypes[t] = t !== 'dim' && t !== 'misnode' ? true : true; });
     visibleTypes.dim = false;
 
@@ -266,11 +279,10 @@
       edgeLayer = svgEl('g', {}, g); nodeLayer = svgEl('g', {}, g);
       var edges = layout();
       var idx = {}; nodes.forEach(function (n) { idx[n.id] = n; });
+      curEdges = edges;
       edges.forEach(function (e) {
-        var a = idx[e.a], b = idx[e.b];
-        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - Math.abs(b.x - a.x) * .08;
-        var p = svgEl('path', { d: 'M' + a.x + ',' + a.y + ' Q' + mx + ',' + my + ' ' + b.x + ',' + b.y, 'class': 'gedge ' + e.kind, 'data-a': e.a, 'data-b': e.b }, edgeLayer);
-        e.el = p;
+        e.na = idx[e.a]; e.nb = idx[e.b];
+        e.el = svgEl('path', { d: pathD(e.na, e.nb), 'class': 'gedge ' + e.kind, 'data-a': e.a, 'data-b': e.b }, edgeLayer);
       });
       nodes.forEach(function (n) {
         var gn = svgEl('g', { 'class': 'gnode', transform: 'translate(' + n.x + ',' + n.y + ')', 'data-id': n.id }, nodeLayer);
@@ -279,8 +291,10 @@
         if (n.type === 'bottleneck' && n.d.tier === 1) svgEl('circle', { r: n.r + 4, fill: 'none', stroke: fill, 'stroke-opacity': .5, 'stroke-dasharray': '3 2' }, gn);
         var t = svgEl('text', { x: n.r + 4, y: 4 }, gn);
         t.textContent = n.label.length > 16 ? n.label.slice(0, 15) + '…' : n.label;
-        gn.addEventListener('click', function (ev) { ev.stopPropagation(); select(n.id); });
         n.el = gn;
+        gn.addEventListener('click', function (ev) { ev.stopPropagation(); });
+        gn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); ev.preventDefault(); startNodeDrag(n, ev.clientX, ev.clientY); });
+        gn.addEventListener('touchstart', function (ev) { if (ev.touches.length === 1) { ev.stopPropagation(); startNodeDrag(n, ev.touches[0].clientX, ev.touches[0].clientY); } }, { passive: true });
       });
       applyTransform();
       built = true;
@@ -289,11 +303,35 @@
     }
     function applyTransform() { if (g) g.setAttribute('transform', 'translate(' + tx + ',' + ty + ') scale(' + scale + ')'); }
 
-    // 平移 / 縮放
+    // 節點拖曳：落在節點上只動那一個節點，連線跟著動；位移很小就當作點擊
+    var nodeDrag = null;
+    function startNodeDrag(n, cx, cy) {
+      var p = toSvg(cx, cy);
+      nodeDrag = { n: n, dx: n.x - p.x, dy: n.y - p.y, sx: cx, sy: cy, moved: false };
+      n.el.classList.add('drag');
+    }
+    function moveNodeDrag(cx, cy) {
+      if (!nodeDrag) return;
+      if (Math.abs(cx - nodeDrag.sx) + Math.abs(cy - nodeDrag.sy) > 4) nodeDrag.moved = true;
+      if (!nodeDrag.moved) return;
+      var p = toSvg(cx, cy);
+      var x = Math.max(20, Math.min(W - 20, p.x + nodeDrag.dx)), y = Math.max(20, Math.min(H - 20, p.y + nodeDrag.dy));
+      moveNode(nodeDrag.n, x, y);
+    }
+    function endNodeDrag() {
+      if (!nodeDrag) return;
+      var d = nodeDrag; nodeDrag = null;
+      d.n.el.classList.remove('drag');
+      if (!d.moved) select(d.n.id);
+    }
+    // 平移 / 縮放（只在空白處）
     var drag = null;
     svg.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty }; svg.classList.add('dragging'); });
-    window.addEventListener('mousemove', function (e) { if (!drag) return; var s = svg.getBoundingClientRect().width / W; tx = drag.tx + (e.clientX - drag.x) / s; ty = drag.ty + (e.clientY - drag.y) / s; applyTransform(); });
-    window.addEventListener('mouseup', function () { drag = null; svg.classList.remove('dragging'); });
+    window.addEventListener('mousemove', function (e) {
+      if (nodeDrag) { moveNodeDrag(e.clientX, e.clientY); return; }
+      if (!drag) return; var s = svg.getBoundingClientRect().width / W; tx = drag.tx + (e.clientX - drag.x) / s; ty = drag.ty + (e.clientY - drag.y) / s; applyTransform();
+    });
+    window.addEventListener('mouseup', function () { endNodeDrag(); drag = null; svg.classList.remove('dragging'); });
     svg.addEventListener('wheel', function (e) {
       e.preventDefault();
       var rect = svg.getBoundingClientRect(), s = rect.width / W;
@@ -304,8 +342,12 @@
     // 觸控
     var touch = null;
     svg.addEventListener('touchstart', function (e) { if (e.touches.length === 1) touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: tx, ty: ty }; }, { passive: true });
-    svg.addEventListener('touchmove', function (e) { if (!touch || e.touches.length !== 1) return; var s = svg.getBoundingClientRect().width / W; tx = touch.tx + (e.touches[0].clientX - touch.x) / s; ty = touch.ty + (e.touches[0].clientY - touch.y) / s; applyTransform(); }, { passive: true });
-    svg.addEventListener('touchend', function () { touch = null; });
+    svg.addEventListener('touchmove', function (e) {
+      if (e.touches.length !== 1) return;
+      if (nodeDrag) { moveNodeDrag(e.touches[0].clientX, e.touches[0].clientY); return; }
+      if (!touch) return; var s = svg.getBoundingClientRect().width / W; tx = touch.tx + (e.touches[0].clientX - touch.x) / s; ty = touch.ty + (e.touches[0].clientY - touch.y) / s; applyTransform();
+    }, { passive: true });
+    svg.addEventListener('touchend', function () { endNodeDrag(); touch = null; });
     svg.addEventListener('click', function () { closePanel(); highlight(null); setHash('graph', null); });
     $('#graphReset').addEventListener('click', function () { tx = 0; ty = 0; scale = 1; applyTransform(); });
 

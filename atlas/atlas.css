@@ -84,7 +84,9 @@ code { font-family:var(--mono); font-size:.85em; color:var(--text-dim); }
 }
 
 /* SVG 節點樣式 */
-.gnode { cursor:pointer; }
+.gnode { cursor:grab; }
+.gnode.drag { cursor:grabbing; }
+.gnode.drag circle { stroke:var(--text); stroke-width:3; }
 .gnode circle { stroke-width:1.5; transition:opacity .2s; }
 .gnode text { font-family:var(--sans); font-size:11px; fill:var(--text); paint-order:stroke; stroke:var(--bg); stroke-width:3px; stroke-linejoin:round; pointer-events:none; }
 .gnode.dim { opacity:.14; }
