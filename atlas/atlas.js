@@ -86,13 +86,15 @@
   }
   (A.edges || []).forEach(function (e) { link(e.a, e.b, e.rel, e.why, e.strength); });
   var SRC_PIPES = { s_fed: ['p_ig', 'p_bank'], s_bank: ['p_ig', 'p_pc', 'p_vendor'], s_asia: ['p_ig'], s_broad: ['p_ig', 'p_pc', 'p_abs'] };
-  Object.keys(SRC_PIPES).forEach(function (s) { SRC_PIPES[s].forEach(function (p) { link(s, p, 'funds', '分子側來源經此管道出資。'); }); });
+  var CW = A.creditWhy || {};
+  function cwhy(a, b, fallback) { return CW[a + '>' + b] || fallback; }
+  Object.keys(SRC_PIPES).forEach(function (s) { SRC_PIPES[s].forEach(function (p) { link(s, p, 'funds', cwhy(s, p, '分子側來源經此管道出資。')); }); });
   var PIPE_TENANTS = { p_ig: ['n_hyper'], p_pc: ['n_lab', 'n_hyper'], p_abs: ['n_lab', 'n_hyper'], p_bank: ['n_lab', 'n_hyper'], p_vendor: ['n_lab'] };
-  Object.keys(PIPE_TENANTS).forEach(function (p) { PIPE_TENANTS[p].forEach(function (t) { link(p, t, 'funds', '管道把信用送到承載者的資產負債表。'); }); });
-  A.numerator.tenants.forEach(function (t) { link(t.id, t.flow, 'spends', '承載者的支出匯成這股信用流。'); });
+  Object.keys(PIPE_TENANTS).forEach(function (p) { PIPE_TENANTS[p].forEach(function (t) { link(p, t, 'funds', cwhy(p, t, '管道把信用送到承載者的資產負債表。')); }); });
+  A.numerator.tenants.forEach(function (t) { link(t.id, t.flow, 'spends', cwhy(t.id, t.flow, '承載者的支出匯成這股信用流。')); });
   A.numerator.sources.forEach(function (s) { link(s.id, s.misnode, 'contains'); });
   A.bottlenecks.forEach(function (b) {
-    (b.flows || []).forEach(function (f) { link(f, b.id, 'collides', '這股信用流撞上此瓶頸（碰撞矩陣）。'); });
+    (b.flows || []).forEach(function (f) { link(f, b.id, 'collides', '碰撞裁決：' + (b.collision || '') + (b.clock ? '；追趕時鐘 ' + b.clock : '') + '。'); });
     link(b.layer, b.id, 'contains');
   });
   A.threads.forEach(function (t) { (t.nodes || []).forEach(function (n) { link(t.id, n, 'tracks'); }); });
