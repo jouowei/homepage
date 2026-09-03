@@ -101,10 +101,15 @@ code { font-family:var(--mono); font-size:.85em; color:var(--text-dim); }
 .gedge.collides, .gedge.funds, .gedge.spends { stroke-dasharray:4 4; }
 .gedge.tracks { stroke-opacity:.15; }
 .gedge.contains { stroke-opacity:.12; }
-.gedge.hidden, .gnode.hidden, .gcols.hidden { display:none; }
+.gedge.hidden, .gedge-hit.hidden, .gnode.hidden, .gcols.hidden { display:none; }
 .gnode.t-thread text { opacity:0; transition:opacity .15s; }
 .gnode.t-thread:hover text, .gnode.t-thread.selected text, .gnode.t-thread.near text, .gnode.t-thread.hit text { opacity:1; }
 .gedge.dim { stroke-opacity:.05; }
+.gedge-hit { stroke:transparent; stroke-width:16; fill:none; pointer-events:stroke; cursor:pointer; }
+.gedge.hover { stroke-opacity:.95; stroke-width:2.5; }
+.gedge.selected { stroke:var(--accent); stroke-opacity:1; stroke-width:3; }
+.panel-body h3 .arrow { color:var(--text-mute); font-family:var(--mono); margin:0 .2rem; }
+.panel-body h3 .chip { font-size:.95rem; font-family:var(--serif); }
 .gedge.hot { stroke:var(--accent); stroke-opacity:.9; }
 .gcol-label { font-family:var(--mono); font-size:11px; letter-spacing:.1em; fill:var(--text-mute); text-anchor:middle; }
 

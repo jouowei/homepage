@@ -232,7 +232,59 @@
     if ((el = t.closest('[data-exit]'))) { ev.preventDefault(); graph.exitMode(); setHash('graph', null); return; }
     if ((el = t.closest('[data-go]'))) { ev.preventDefault(); select(el.getAttribute('data-go')); }
   });
+  function edgeId(e) { return 'e:' + e.a + '~' + e.b + '~' + e.rel; }
+  function findEdge(id) {
+    if (!id || id.indexOf('e:') !== 0) return null;
+    var p = id.slice(2).split('~');
+    return E.filter(function (e) { return e.a === p[0] && e.b === p[1] && e.rel === p[2]; })[0] || null;
+  }
+  function relSentence(e) {
+    var A_ = N[e.a].label, B_ = N[e.b].label;
+    switch (e.rel) {
+      case 'depends_on': return '「' + A_ + '」依賴「' + B_ + '」：' + B_ + ' 是 ' + A_ + ' 的上游。';
+      case 'constrains': return '「' + A_ + '」限制「' + B_ + '」：' + A_ + ' 卡住，' + B_ + ' 就出不來。';
+      case 'supplies': return '「' + A_ + '」供應「' + B_ + '」。';
+      case 'enables': return '「' + A_ + '」促成「' + B_ + '」：前者是後者的技術或供給前提。';
+      case 'migrates_to': return '瓶頸租金由「' + A_ + '」遷往「' + B_ + '」：前一棒交期壓縮、後一棒延長。';
+      case 'collides': return '信用流「' + A_ + '」撞上瓶頸「' + B_ + '」（碰撞矩陣的一格）。';
+      case 'funds': return '「' + A_ + '」經此把信用送到「' + B_ + '」。';
+      case 'spends': return '「' + A_ + '」的支出匯成信用流「' + B_ + '」。';
+      case 'competes_with': return '「' + A_ + '」與「' + B_ + '」橫向爭搶同一批供給，兩者之間沒有上下游。';
+      case 'tracks': return 'Thread「' + A_ + '」追蹤節點「' + B_ + '」。';
+      case 'contains': return '「' + B_ + '」屬於「' + A_ + '」。';
+    }
+    return '';
+  }
+  function renderEdgePanel(e) {
+    var m = REL[e.rel], a = N[e.a], b = N[e.b];
+    var from = m.dir ? N[e.up] : a, to = m.dir ? N[e.down] : b;
+    var h = '<div class="type">關係 · ' + esc(m.label) + '</div>';
+    h += '<h3><span class="chip" data-go="' + esc(from.id) + '">' + esc(from.label) + '</span> <span class="arrow">' + (m.dir ? '→' : '↔') + '</span> <span class="chip" data-go="' + esc(to.id) + '">' + esc(to.label) + '</span></h3>';
+    h += '<div class="meta chips"><span class="badge acc">' + esc(m.label) + '</span><span class="badge">強度 ' + esc({ high: '高', medium: '中', low: '低' }[e.strength] || e.strength) + '</span>' + (m.dir ? '<span class="badge">箭頭指向下游</span>' : '<span class="badge">無方向</span>') + '</div>';
+    h += '<p>' + esc(relSentence(e)) + '</p>';
+    if (e.why) h += '<div class="reading notion"><strong>為什麼</strong> ' + esc(e.why) + '</div>';
+    if (e.rel === 'collides' && a.type === 'flow' && (b.type === 'bottleneck' || b.type === 'thermo')) {
+      var ci = A.matrix.cols.map(function (c) { return c.replace(/ ⑦$/, ''); }).indexOf(a.label.replace(/ 基建$/, function (x) { return a.id === 'f_ai' ? ' 基建' : x; }));
+      if (ci < 0) ci = A.matrix.cols.findIndex(function (c) { return c.indexOf(a.label.slice(0, 2)) === 0; });
+      var row = A.matrix.rows.filter(function (r) { return r.layer === b.d.layer; })[0];
+      if (row && ci >= 0) h += '<h5>碰撞矩陣格</h5><p>' + esc(N[b.d.layer].label) + ' × ' + esc(A.matrix.cols[ci]) + '：<strong>' + esc(row.cells[ci]) + '</strong></p><p class="fig-note">🔴 3 條以上信用流同時碰撞、🟡 2 條、🟢 1 條；✅ 已覆蓋、⚠️ 部分、❌ 研究缺口。</p>';
+    }
+    if (e.rel === 'tracks' && a.type === 'thread') h += '<h5>這條線在追什麼</h5><p>' + esc(a.d.summary) + '</p>';
+    var others = E.filter(function (x) { return x !== e && ((x.a === e.a && x.b === e.b) || (x.a === e.b && x.b === e.a)); });
+    if (others.length) h += '<h5>同一對節點的其他關係</h5><ul class="rels">' + others.map(function (x) { return '<li><span class="rel">' + esc(REL[x.rel].label) + '</span> <span class="chip" data-go="' + esc(edgeId(x)) + '">' + esc(N[x.a].label) + (REL[x.rel].dir ? ' → ' : ' ↔ ') + esc(N[x.b].label) + '</span>' + (x.why ? '<span class="why">' + esc(x.why) + '</span>' : '') + '</li>'; }).join('') + '</ul>';
+    h += '<h5>兩端節點</h5>' + chips([e.a, e.b]);
+    h += '<p class="fig-note">點兩端的節點看各自的細節；點任一連線都能看這對節點之間的關係。</p>';
+    panelBody.innerHTML = h; panel.hidden = false; panel.scrollTop = 0;
+  }
   function select(id, fromHash) {
+    var e = findEdge(id);
+    if (e) {
+      state.id = id;
+      renderEdgePanel(e);
+      if (!fromHash) setHash(state.view, id);
+      graph.highlightEdge(e);
+      return;
+    }
     var n = N[id];
     if (!n) return;
     state.id = id;
@@ -273,7 +325,7 @@
     function moveNode(n, x, y) {
       n.x = x; n.y = y;
       n.el.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
-      curEdges.forEach(function (e) { if (e.a === n.id || e.b === n.id) e.el.setAttribute('d', pathD(e.na, e.nb)); });
+      curEdges.forEach(function (e) { if (e.a === n.id || e.b === n.id) { var d = pathD(e.na, e.nb); e.el.setAttribute('d', d); if (e.hit) e.hit.setAttribute('d', d); } });
     }
 
     function layout() {
@@ -336,10 +388,19 @@
       var edges = layout();
       curEdges = edges;
       edges.forEach(function (e) {
-        e.na = byId[e.a]; e.nb = byId[e.b];
+        /* 有方向的邊一律從上游畫到下游，箭頭指向下游 */
+        e.na = byId[REL[e.rel].dir ? e.up : e.a]; e.nb = byId[REL[e.rel].dir ? e.down : e.b];
         var attrs = { d: pathD(e.na, e.nb), 'class': 'gedge ' + e.rel + ' s-' + e.strength, 'data-a': e.a, 'data-b': e.b };
         if (REL[e.rel].dir) attrs['marker-end'] = 'url(#mk-' + (e.rel === 'migrates_to' ? 'arrow-warn' : 'arrow') + ')';
         e.el = svgEl('path', attrs, edgeLayer);
+        /* 透明寬感應線：點它看這對節點的關係 */
+        e.hit = svgEl('path', { d: attrs.d, 'class': 'gedge-hit' }, edgeLayer);
+        (function (edge) {
+          edge.hit.addEventListener('click', function (ev) { ev.stopPropagation(); select(edgeId(edge)); });
+          edge.hit.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
+          edge.hit.addEventListener('mouseenter', function () { edge.el.classList.add('hover'); });
+          edge.hit.addEventListener('mouseleave', function () { edge.el.classList.remove('hover'); });
+        })(e);
       });
       nodes.forEach(function (n) {
         var gn = svgEl('g', { 'class': 'gnode t-' + n.type, transform: 'translate(' + n.x + ',' + n.y + ')', 'data-id': n.id }, nodeLayer);
@@ -368,7 +429,7 @@
     /* ── 顯示集合與欄位排版（聚焦 / 故事線共用） ── */
     function setVisible(set) {
       nodes.forEach(function (n) { n.el.classList.toggle('hidden', !!set && !set.has(n.id)); });
-      curEdges.forEach(function (e) { e.el.classList.toggle('hidden', !!set && !(set.has(e.a) && set.has(e.b))); });
+      curEdges.forEach(function (e) { var hid = !!set && !(set.has(e.a) && set.has(e.b)); e.el.classList.toggle('hidden', hid); if (e.hit) e.hit.classList.toggle('hidden', hid); });
       colsLayer.classList.toggle('hidden', !!set);
     }
     function placeColumns(cols) {
@@ -555,7 +616,20 @@
       });
       curEdges.forEach(function (e) {
         var on = !!id && (e.a === id || e.b === id);
+        e.el.classList.remove('selected');
         e.el.classList.toggle('hot', on); e.el.classList.toggle('dim', !!keep && !on);
+        if (REL[e.rel].dir) e.el.setAttribute('marker-end', 'url(#mk-' + (on ? 'arrow-hot' : e.rel === 'migrates_to' ? 'arrow-warn' : 'arrow') + ')');
+      });
+    }
+    function highlightEdge(edge) {
+      if (!built) return;
+      nodes.forEach(function (n) {
+        var on = n.id === edge.a || n.id === edge.b;
+        n.el.classList.toggle('dim', !on); n.el.classList.toggle('selected', false); n.el.classList.toggle('near', on);
+      });
+      curEdges.forEach(function (e) {
+        var on = e === edge;
+        e.el.classList.toggle('hot', on); e.el.classList.toggle('selected', on); e.el.classList.toggle('dim', !on);
         if (REL[e.rel].dir) e.el.setAttribute('marker-end', 'url(#mk-' + (on ? 'arrow-hot' : e.rel === 'migrates_to' ? 'arrow-warn' : 'arrow') + ')');
       });
     }
@@ -575,7 +649,7 @@
     });
     legend.addEventListener('change', function (e) { var t = e.target.getAttribute('data-type'); if (t) { visibleTypes[t] = e.target.checked; build(); } });
     $('#graphSearch').addEventListener('input', function (e) { search(e.target.value); });
-    return { ensure: function () { if (!built) build(); }, highlight: highlight, rebuild: build, focus: focus, story: story, exitMode: exitMode };
+    return { ensure: function () { if (!built) build(); }, highlight: highlight, highlightEdge: highlightEdge, rebuild: build, focus: focus, story: story, exitMode: exitMode };
   })();
 
   /* ───────── 分子端信用流向圖 ───────── */
