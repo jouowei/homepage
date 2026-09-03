@@ -495,3 +495,117 @@ window.ATLAS = {
     { name: 'Forbes：AI debt heads toward $570 billion', url: 'https://www.forbes.com/sites/robertszczerba/2026/07/17/bond-investors-push-back-as-ai-debt-heads-toward-570-billion/', topic: 'p_ig' }
   ]
 };
+
+/* ───────────── 關係邊（有方向、有型別、有解釋） ─────────────
+   rel 語意：a depends_on b = a 的上游是 b；a constrains b = a 限制 b；a supplies b = a 供應 b；
+   a enables b = a 促成 b；a competes_with b = 橫向爭搶同一資源；a migrates_to b = 瓶頸租金由 a 遷往 b。
+   信用側：funds（融資）、spends（支出成信用流）、collides（信用流撞上瓶頸）、tracks（thread 追蹤）。 */
+window.ATLAS.edges = [
+  /* 算力鏈 */
+  { a: 'aichip', b: 'euv', rel: 'depends_on', strength: 'high', why: '先進製程是 GPU 與自研 ASIC 共用的第一道閘；四家 ASIC 夥伴全在 TSMC 2nm 同一條隊伍。' },
+  { a: 'aichip', b: 'cowos', rel: 'depends_on', strength: 'high', why: 'NVIDIA 約占 CoWoS 六成產能；merchant GPU 與自研 ASIC 排同一條封裝隊伍，彼此無交期差。' },
+  { a: 'aichip', b: 'hbm', rel: 'depends_on', strength: 'high', why: '每顆加速器綁 HBM 堆疊；2026 與 2027 HBM 產能皆已售罄，客戶只拿到需求量六到七成。' },
+  { a: 'aichip', b: 'abf', rel: 'depends_on', strength: 'medium', why: 'AI 加速器與伺服器主板吃 ABF 載板、T-glass 與 HVLP 銅箔，層數翻倍。' },
+  { a: 'euv', b: 'helium', rel: 'depends_on', strength: 'medium', why: '先進製程 fab 的冷卻與載氣依賴氦；Qatar 不可抗力後亞洲 fab 進入配給。' },
+  { a: 'euv', b: 'specialtygas', rel: 'depends_on', strength: 'medium', why: '特氣、濕化學品、CMP slurry 為廠務耗材層，系統內仍是整格缺口。' },
+  { a: 'cowos', b: 'abf', rel: 'depends_on', strength: 'high', why: 'CoWoS 的 S 段落在 ABF 載板；建廠 2-3 年大於設備交期，比後段設備更剛性。' },
+  { a: 'abf', b: 'hvlp4', rel: 'depends_on', strength: 'medium', why: '高階載板與 CCL 用 HVLP4/5 銅箔，Mitsui >80%，訂單排至 2027H2。' },
+  { a: 'hybridbond', b: 'hbm', rel: 'enables', strength: 'medium', why: 'W2W 混合鍵合是 HBM5 世代的候選路徑；HBM4 因 JEDEC 放寬高度至 775μm 而遞延。' },
+  { a: 'glasscore', b: 'cowos', rel: 'enables', strength: 'low', why: '玻璃芯載板是 CoPoS 面板級封裝的繼任基材，2028-29 量產。' },
+  { a: 'hbm', b: 'nandctl', rel: 'constrains', strength: 'medium', why: '原廠把產能排給 HBM，NAND 短缺是被動結果；獨立控制器騎的是這個紅利。' },
+  { a: 'hdd', b: 'helium', rel: 'depends_on', strength: 'low', why: '氦封 HDD 為 nearline 主流，氦是 BOM 裡的物質性獨佔錨。' },
+  { a: 'cpo', b: 'aichip', rel: 'enables', strength: 'medium', why: 'scale-out 頻寬牆由 CPO 解，Spectrum-X CPO 2027-28 放量。' },
+  { a: 'rareearth', b: 'hvdc800', rel: 'constrains', strength: 'low', why: '鎵、鍺出口管制直接壓在 GaN / 化合物半導體的材料源頭。' },
+  { a: 'rareearth', b: 'cpo', rel: 'constrains', strength: 'low', why: 'InP / 鍺為光通訊磊晶與光纖材料，管制擴大即為反向收費站。' },
+  /* 組裝層與相鄰層 */
+  { a: 'odm', b: 'aichip', rel: 'depends_on', strength: 'high', why: '機櫃組裝向上游買路，rack 出貨翻倍即上游需求 RED。' },
+  { a: 'odm', b: 'hbm', rel: 'depends_on', strength: 'medium', why: '整櫃 BoM 裡記憶體佔比最高的一段。' },
+  { a: 'odm', b: 'mlcc', rel: 'depends_on', strength: 'low', why: '伺服器級高容值 MLCC 單機用量數量級跳升。' },
+  { a: 'odm', b: 'socket', rel: 'depends_on', strength: 'low', why: 'CPU socket 每世代重新競標，供應商三方在場。' },
+  { a: 'odm', b: 'liquidcool', rel: 'depends_on', strength: 'low', why: '液冷是被跨過的一格：需求存續但可壓縮，買方用資本直接壓。' },
+  { a: 'odm', b: 'hvdc800', rel: 'depends_on', strength: 'low', why: '800V 或 ±400V 兩陣營都要，device 層 14+ 可互換供應商。' },
+  /* 電力鏈 */
+  { a: 'power', b: 'transformer', rel: 'depends_on', strength: 'high', why: '每座資料中心與電廠都要 GSU 與電力變壓器，128-144 週交期是通電日期的硬約束。' },
+  { a: 'power', b: 'gasturbine', rel: 'depends_on', strength: 'high', why: 'BTM 與新建燃氣機組是 firm 電力的主要來源，GEV 格子排到 2031。' },
+  { a: 'power', b: 'uranium', rel: 'depends_on', strength: 'medium', why: '核電 PPA 與重啟是 firm 電力的另一腿，燃料端卡在 SWU 與 HALEU。' },
+  { a: 'power', b: 'hvcable', rel: 'depends_on', strength: 'medium', why: '長距輸電與離岸併網靠 HVDC 電纜，三家歐企控 75%，backlog 12 年。' },
+  { a: 'power', b: 'copper', rel: 'depends_on', strength: 'medium', why: '電網與設備的基礎金屬，新礦 10-15 年，2026 小過剩後缺口延至 2029+。' },
+  { a: 'transformer', b: 'copper', rel: 'depends_on', strength: 'medium', why: '繞組用銅，銅關稅被點名將惡化變壓器瓶頸。' },
+  { a: 'gasturbine', b: 'transformer', rel: 'competes_with', strength: 'medium', why: '燃機 OEM 的電氣化部門與 Eaton 等同時搶 GOES、銅與變壓器產能。' },
+  { a: 'hvdc800', b: 'transformer', rel: 'depends_on', strength: 'low', why: '機櫃端的 800V 架構改變不了上游中壓變壓器的交期；閘門在紙（UL 認證）不在矽。' },
+  { a: 'transformer', b: 'power', rel: 'constrains', strength: 'high', why: '2026 排定上線的美國 DC 僅三分之一在建，變壓器與開關短缺為主因。' },
+  { a: 'power', b: 'aichip', rel: 'constrains', strength: 'high', why: '瓶頸自晶片遷至電力：已簽 MW 不等於已通電，COD 達成率是真缺口。' },
+  { a: 'helium', b: 'hbm', rel: 'constrains', strength: 'low', why: '韓國 fab 六成氦來自 Qatar，約六個月庫存。' },
+  /* 橫向爭搶 */
+  { a: 'f_sov', b: 'f_ai', rel: 'competes_with', strength: 'high', why: '主權計畫與 Hyperscaler 爭搶同一批 EUV、先進製程與電力，前者不受 ROI 殺開關控制。' },
+  { a: 'f_def', b: 'f_energy', rel: 'competes_with', strength: 'medium', why: '再軍備與能源轉型在銅、稀土、變壓器上撞同一批供給。' },
+  /* 瓶頸遷移接力 */
+  { a: 'aichip', b: 'cowos', rel: 'migrates_to', strength: 'high', why: '第一棒 → 第二棒（2023 → 2024）：顯示卡交期壓縮，先進封裝交期延長。' },
+  { a: 'cowos', b: 'hbm', rel: 'migrates_to', strength: 'high', why: '第二棒 → 第三棒（2024 → 2024-25）。' },
+  { a: 'hbm', b: 'power', rel: 'migrates_to', strength: 'high', why: '第三棒 → 第四棒（2024-25 → 2025-26）：powered-MW 牆。' },
+  { a: 'power', b: 'hybridbond', rel: 'migrates_to', strength: 'low', why: '第五棒未具名；混合鍵合／SoIC 為候選，缺交期腿，期限 2026-11-19。' },
+  { a: 'abf', b: 'glasscore', rel: 'migrates_to', strength: 'medium', why: 'ABF 的 D-Bypass 繼任者，2028-29 量產。' },
+  { a: 'gasturbine', b: 'transformer', rel: 'migrates_to', strength: 'medium', why: '電力側第一棒：發電端 → 輸配電端。兩腿目前皆延長，依線內規則讀作共同吃緊。' }
+];
+
+/* ───────────── 故事線（有序節點清單，圖層照順序排） ───────────── */
+window.ATLAS.stories = [
+  { id: 'st_relay', name: '瓶頸遷移四棒接力', desc: '租金流向「需求存續 × 交期最長 × 最不可壓縮」的節點。四次交棒都發生在持有期內，第五棒未具名。', nodes: ['aichip', 'cowos', 'hbm', 'power', 'hybridbond'] },
+  { id: 'st_power', name: '電力遷移：機櫃 → 電網 → 發電', desc: '800V 在 device 層是溫度計；收費站往上游走到變壓器、GOES 與燃氣輪機的熱段鑄鍛件。', nodes: ['hvdc800', 'transformer', 'gasturbine', 'power', 'uranium'] },
+  { id: 'st_pkg', name: '封裝材料鏈', desc: '從 GPU 到載板化學的三個單一供應商，再到玻璃芯繼任者。', nodes: ['aichip', 'cowos', 'abf', 'hvlp4', 'glasscore', 'hybridbond'] },
+  { id: 'st_credit', name: '信用 → 資本支出 → 瓶頸', desc: '分子側：信用來源經管道流到承載者，再撞上分母側的物理瓶頸。閥門在租戶信用，不在產出價格。', nodes: ['s_fed', 's_bank', 'p_ig', 'p_pc', 'p_vendor', 'n_lab', 'n_hyper', 'f_ai', 'aichip', 'power'] },
+  { id: 'st_hormuz', name: '航道衝擊傳導到晶圓廠', desc: 'Ras Laffan 不可抗力 → 氦配給 → 亞洲 fab 與 HBM 產線；同一條航道也切斷肥料。', nodes: ['helium', 'euv', 'hbm', 'hdd', 'fertilizer'] },
+  { id: 'st_taiwan', name: '台海 → 先進製程斷鏈', desc: '對中貿易收費站薄而萎縮；全球先進製程收費站是另一個物件，EUV 是五年跨不過的閘。', nodes: ['euv', 'cowos', 'hbm', 'aichip', 'odm'] },
+  { id: 'st_reverse', name: '反向收費站與材料管制', desc: '對方控制的不可繞過關卡：稀土、鎵、鍺、鎢。下游西方國防與功率半導體是受威脅方。', nodes: ['rareearth', 'hvdc800', 'cpo', 'specialtygas', 'hvlp4'] }
+];
+
+/* ───────────── 逐筆事實（每筆帶值、日期、來源層級、來源） ─────────────
+   tier：T0-1 一手／官方，T2 法說與主流財經媒體，T3 研調與產業媒體，T4 部落格與轉述。Notion 為系統內裁決。 */
+window.ATLAS.facts = {
+  transformer: [
+    { text: '大型電力變壓器平均交期 128 週、發電機升壓變壓器 144 週；自 2019 年電力變壓器需求 +119%、GSU +274%，2025 供給缺口約 30%。', value: '128 / 144 週', date: '2025-Q2', tier: 'T3', source: 'Wood Mackenzie 調查（經 Industrial Sage）', url: 'https://www.industrialsage.com/power-transformer-lead-times-us-grid-shortage/' },
+    { text: '2026 年變電站級變壓器交期已逾 160 週；典型 LPT 3-5 年。', value: '>160 週', date: '2026-08', tier: 'T3', source: 'POWER Magazine', url: 'https://www.powermag.com/transformers-in-2026-shortage-scramble-or-self-inflicted-crisis/' },
+    { text: '美國約 80% 電力變壓器靠進口；Hitachi Energy、Siemens Energy、Eaton 近 18 億美元新產能於 2027-28 開出，交期才可能鬆動。', value: '80% 進口', date: '2026', tier: 'T3', source: 'Wood Mackenzie opinion', url: 'https://www.woodmac.com/news/opinion/transformer-troubles-manufacturing-and-policy-constraints-hit-us-transformer-supply/' },
+    { text: 'GOES 占變壓器成本約 20%；美國僅 Butler Works 一家生產，鐵芯進口自 2018 年 1.26 億升至 2025 年 5.24 億美元。', value: '美國單一 GOES 廠', date: '2026', tier: 'T3', source: 'Breakthrough Journal / Cleveland-Cliffs', url: 'https://www.breakthroughjournal.org/p/america-makes-the-wrong-steel-for' },
+    { text: '高壓變壓器交期 3 年 → 4 年（~208 週）；W3 反向確認閾值「交期 <80 週」遠未觸發；乙腿當期可比序列登記為無讀數。', value: '無序列讀數', date: '2026-08-28', tier: 'Notion', source: 'DOC-3 §0.0 / DOC-8 relay' }
+  ],
+  power: [
+    { text: '美國併網佇列 2,600GW，達商轉中位數約 5 年；ERCOT 大負載佇列 410GW 中 87% 為資料中心。', value: '2,600 GW', date: '2026', tier: 'T2', source: 'LBL Queued Up 2026 / RMI', url: 'https://rmi.org/resources/interconnection-reform-ai-data-centers-generator-queues/' },
+    { text: '2026 年 30-50% 的資料中心站點面臨延遲或取消，變壓器與開關短缺為主因。', value: '30-50% 延遲', date: '2026-07', tier: 'T2', source: 'Reuters / Latitude Media', url: 'https://www.latitudemedia.com/news/up-to-half-of-the-worlds-data-centers-may-be-delayed-this-year/' },
+    { text: '腿(a) 首筆 COD 讀數：Goldman on-time 72%→50%、Sightline 16GW→5GW；電力量測鏈三支儀表此前零讀數 63 天。', value: 'on-time 50%', date: '2026-09-02', tier: 'Notion', source: 'DOC-8 AI-ROI / 800V cross-link' }
+  ],
+  gasturbine: [
+    { text: 'GE Vernova Q2 2026 燃機 backlog 116GW（53GW 設備 + 63GW 付費 slot），2031 格子年底前簽過半。', value: '116 GW', date: '2026-07-22', tier: 'T1', source: 'GE Vernova 8-K / Utility Dive', url: 'https://www.utilitydive.com/news/ge-vernova-gas-turbine-backlog-climbs-to-116-gw/826039/' },
+    { text: '交機格子三時點 2029 → 2030 → 2031：方向為延長，與線內原句「即將壓縮」相反。', value: '延長', date: '2026-08-24', tier: 'Notion', source: 'DOC-8 relay 2026-08-24' },
+    { text: '熱段單晶葉片鑄造 Howmet + PCC 約 70-80%；部分大型機組在沒有轉子或葉片的情況下出廠，現場後裝。', value: '~70-80% 雙寡佔', date: '2026-07-24', tier: 'Notion(T2-3)', source: 'DOC-3 電力設備 Layer B（EPRI）' }
+  ],
+  cowos: [
+    { text: 'TSMC 三座先進封裝後段廠 sold out 至 2027，交期 52-78 週；2026 底 125-140k wpm，2027 傳出 ≥200k。', value: '52-78 週', date: '2026-07-10', tier: 'T3', source: 'Digitimes / TrendForce', url: 'https://www.digitimes.com/news/a20260710PD226/tsmc-cowos-2027-packaging-capacity.html' },
+    { text: 'CoWoS 供需缺口 20% → 10%（2026 底）；單源且穿四條 FC，降 watch-only，不得單獨擊發。', value: '缺口 10%', date: '2026-06-15', tier: 'T3', source: 'TrendForce（Notion 標 SOURCE_ECHO）', url: 'https://www.trendforce.com/news/2026/06/15/news-tsmc-cowos-supply-demand-gap-reportedly-seen-narrowing-from-20-to-10-by-end-2026-as-capacity-expands/' },
+    { text: '矽品雲林新廠 2028 啟用，非 TSMC OSAT 2027 底約 8 萬片／月；尚未跨越「長約綁定或繞過分配」的重驗觸發線。', value: '8 萬片/月（2027）', date: '2026-08-17', tier: 'Notion(T3)', source: 'DOC-3 Layer B 2026-08-17' }
+  ],
+  hbm: [
+    { text: 'SK hynix、Micron 2026 HBM 全數售罄；三家 2027 產能亦已售罄，客戶僅拿到需求量的 60-70%。', value: '2027 售罄', date: '2026-08', tier: 'T3', source: 'Introl / Notebookcheck', url: 'https://introl.com/blog/south-korea-hbm4-stargate-memory-supercycle-2026' },
+    { text: 'DRAM like-for-like +250-300%、NAND +200-250%，very tight 延至 2027。', value: '+250-300%', date: '2026-06', tier: 'T3', source: 'Goldman Exhibit 9（經 Notion 2026-07-09）' },
+    { text: 'HBM4 2026-02 量產，新產能 2027 才有感；Samsung HBM4 已通過 NVIDIA 認證。', value: 'HBM4 量產', date: '2026', tier: 'T2-3', source: 'Mark LaPedus / 產業媒體' }
+  ],
+  euv: [
+    { text: 'ASML Q2 2026 淨銷售 €9.3B、毛利 54%；2026 EUV 出貨規劃約 65 台低 NA，全年營收指引 €43-45B。', value: '~65 台', date: '2026-07-15', tier: 'T1', source: 'ASML Q2 2026 results', url: 'https://www.asml.com/en/news/press-releases/2026/q2-2026-financial-results' },
+    { text: 'ASML 2026 低 NA EUV 出貨上限 60 台（CFO）；五方爭搶碰撞確認。', value: '60 台上限', date: '2026-07-16', tier: 'Notion(T1)', source: 'DOC-3 §6.3' }
+  ],
+  uranium: [
+    { text: '現貨約 $90.39/lb；長期合約價 $97.00/lb（2026-07-01，歷史新高）。', value: '$90 / $97', date: '2026-08-31', tier: 'T3', source: 'carboncredits.com / TradeTech', url: 'https://carboncredits.com/uranium-prices-today/' },
+    { text: 'Kazatomprom 下調 2026 產量（硫酸約束）；Goldman 累計缺口 19.1 億磅。', value: '缺口 19.1 億磅', date: '2026-07-16', tier: 'Notion(T2-3)', source: 'DOC-3 §6.3' }
+  ],
+  helium: [
+    { text: '2026-03-02 QatarEnergy 於 Ras Laffan 宣告不可抗力；部分客戶僅拿到正常量一半；韓國 fab 約 6 個月庫存；全產能恢復需 3-5 年。', value: '恢復 3-5 年', date: '2026-06', tier: 'T2-3', source: 'IUMI / Gowling WLG', url: 'https://iumi.com/newsletter-june-2026/qatari-helium-shortages/' },
+    { text: 'Qatar 約占全球 30-38% 氦產能；現貨價已翻倍，合約價估 +40-60%。', value: '30-38%', date: '2026', tier: 'T3', source: 'WestAir / Fusion', url: 'https://westairgases.com/blog/helium-shortage/' }
+  ],
+  abf: [
+    { text: 'Ajinomoto ABF 膜漲價 30%、供給缺口延至 2027；ABF +30-35%、CCL +35-40%、T-glass +20-30%。', value: '+30%', date: '2026-07-16', tier: 'Notion(T3)', source: 'DOC-3 §6.3 / GS Exhibit 9' },
+    { text: 'Defu 收購 Circuit Foil Luxembourg 被盧森堡 FDI 審查否決，中國 HVLP4 最快追趕路徑切斷。', value: 'FDI 否決', date: '2026-01-08', tier: 'Notion(T1-2)', source: 'DOC-3 HVLP4 Layer B' }
+  ],
+  copper: [
+    { text: 'LME 紀錄 $11,771/t（2025-12-08）；2026 區間 $10-11k；Goldman 2026 小過剩 160kt，缺口延至 2029+。', value: '$10-11k/t', date: '2026-07-16', tier: 'Notion(T2-3)', source: 'DOC-3 §6.3 銅' }
+  ]
+};

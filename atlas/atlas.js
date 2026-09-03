@@ -59,22 +59,46 @@
   A.numerator.dims.forEach(function (d) { reg('dim', d.id, d.name, d); });
 
   /* 邊 */
-  var E = [];
-  function link(a, b, kind) { if (!N[a] || !N[b]) return; E.push({ a: a, b: b, kind: kind || '' }); N[a].links.push(b); N[b].links.push(a); }
+  /* ───────── 關係邊（有方向、有型別） ─────────
+     up / down：對可進依賴鏈的邊，up 是上游節點、down 是下游節點。 */
+  var REL = {
+    depends_on:    { label: '依賴', dir: true,  chain: true, upIsB: true },
+    supplies:      { label: '供應', dir: true,  chain: true },
+    enables:       { label: '促成', dir: true,  chain: true },
+    constrains:    { label: '限制', dir: true,  chain: true },
+    migrates_to:   { label: '遷移', dir: true,  chain: true },
+    collides:      { label: '撞上', dir: true,  chain: true },
+    funds:         { label: '融資', dir: true,  chain: true },
+    spends:        { label: '支出', dir: true,  chain: true },
+    competes_with: { label: '爭搶', dir: false, chain: false },
+    tracks:        { label: '追蹤', dir: false, chain: false },
+    contains:      { label: '所屬', dir: false, chain: false }
+  };
+  var E = [], edgeSeen = {};
+  function link(a, b, rel, why, strength) {
+    if (!N[a] || !N[b] || a === b) return;
+    var key = a + '|' + b + '|' + rel;
+    if (edgeSeen[key]) return; edgeSeen[key] = 1;
+    var m = REL[rel] || REL.contains;
+    E.push({ a: a, b: b, rel: rel, why: why || '', strength: strength || 'medium',
+      up: m.dir ? (m.upIsB ? b : a) : null, down: m.dir ? (m.upIsB ? a : b) : null });
+    N[a].links.push(b); N[b].links.push(a);
+  }
+  (A.edges || []).forEach(function (e) { link(e.a, e.b, e.rel, e.why, e.strength); });
   var SRC_PIPES = { s_fed: ['p_ig', 'p_bank'], s_bank: ['p_ig', 'p_pc', 'p_vendor'], s_asia: ['p_ig'], s_broad: ['p_ig', 'p_pc', 'p_abs'] };
-  Object.keys(SRC_PIPES).forEach(function (s) { SRC_PIPES[s].forEach(function (p) { link(s, p, 'flow'); }); });
+  Object.keys(SRC_PIPES).forEach(function (s) { SRC_PIPES[s].forEach(function (p) { link(s, p, 'funds', '分子側來源經此管道出資。'); }); });
   var PIPE_TENANTS = { p_ig: ['n_hyper'], p_pc: ['n_lab', 'n_hyper'], p_abs: ['n_lab', 'n_hyper'], p_bank: ['n_lab', 'n_hyper'], p_vendor: ['n_lab'] };
-  Object.keys(PIPE_TENANTS).forEach(function (p) { PIPE_TENANTS[p].forEach(function (t) { link(p, t, 'flow'); }); });
-  A.numerator.tenants.forEach(function (t) { link(t.id, t.flow, 'flow'); });
-  A.numerator.sources.forEach(function (s) { link(s.id, s.misnode, ''); });
+  Object.keys(PIPE_TENANTS).forEach(function (p) { PIPE_TENANTS[p].forEach(function (t) { link(p, t, 'funds', '管道把信用送到承載者的資產負債表。'); }); });
+  A.numerator.tenants.forEach(function (t) { link(t.id, t.flow, 'spends', '承載者的支出匯成這股信用流。'); });
+  A.numerator.sources.forEach(function (s) { link(s.id, s.misnode, 'contains'); });
   A.bottlenecks.forEach(function (b) {
-    (b.flows || []).forEach(function (f) { link(f, b.id, 'flow'); });
-    link(b.layer, b.id, '');
+    (b.flows || []).forEach(function (f) { link(f, b.id, 'collides', '這股信用流撞上此瓶頸（碰撞矩陣）。'); });
+    link(b.layer, b.id, 'contains');
   });
-  A.threads.forEach(function (t) { (t.nodes || []).forEach(function (n) { link(t.id, n, ''); }); });
-  // 接力棒之間的遷移邊
-  var bat = A.relay.batons;
-  for (var i = 0; i < bat.length - 1; i++) link(bat[i].node, bat[i + 1].node, 'migrate');
+  A.threads.forEach(function (t) { (t.nodes || []).forEach(function (n) { link(t.id, n, 'tracks'); }); });
+  function upstreamOf(id) { return E.filter(function (e) { return REL[e.rel].chain && e.down === id; }); }
+  function downstreamOf(id) { return E.filter(function (e) { return REL[e.rel].chain && e.up === id; }); }
+  function chainEligible(n) { return n.type !== 'thread' && n.type !== 'layer' && n.type !== 'dim' && n.type !== 'misnode'; }
 
   /* ───────── 路由 ───────── */
   var state = { view: 'graph', id: null };
@@ -112,6 +136,27 @@
                        : (r.date ? '<span class="src">' + esc(r.date) + '</span>' : '');
     return '<div class="reading ' + cls + '"><strong>' + title + '</strong> ' + esc(r.text) + src + '</div>';
   }
+  function relItem(e, other) {
+    return '<li><span class="rel">' + esc(REL[e.rel].label) + '</span> <span class="chip" data-go="' + esc(other) + '">' + esc(N[other].label) + '</span>' + (e.why ? '<span class="why">' + esc(e.why) + '</span>' : '') + '</li>';
+  }
+  function relSections(n) {
+    var up = upstreamOf(n.id), down = downstreamOf(n.id);
+    var comp = E.filter(function (e) { return e.rel === 'competes_with' && (e.a === n.id || e.b === n.id); });
+    var h = '';
+    if (up.length) h += '<h5>上游 · 它依賴誰、被誰限制</h5><ul class="rels">' + up.map(function (e) { return relItem(e, e.up); }).join('') + '</ul>';
+    if (down.length) h += '<h5>下游 · 誰依賴它、被它限制</h5><ul class="rels">' + down.map(function (e) { return relItem(e, e.down); }).join('') + '</ul>';
+    if (comp.length) h += '<h5>橫向爭搶</h5><ul class="rels">' + comp.map(function (e) { return relItem(e, e.a === n.id ? e.b : e.a); }).join('') + '</ul>';
+    return h;
+  }
+  function factsSection(id) {
+    var f = A.facts && A.facts[id];
+    if (!f || !f.length) return '';
+    return '<h5>逐筆事實</h5><ul class="facts">' + f.map(function (x) {
+      var src = x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.source) + '</a>' : esc(x.source);
+      return '<li><b>' + esc(x.value) + '</b> ' + esc(x.text) + '<span class="src">' + src + ' · ' + esc(x.tier) + ' · ' + esc(x.date) + '</span></li>';
+    }).join('') + '</ul>';
+  }
+  function focusBtn(n) { return chainEligible(n) ? '<button type="button" class="btn-focus" data-focus="' + esc(n.id) + '">展開依賴鏈 →</button>' : ''; }
   function related(n) {
     var ids = n.links.filter(function (id, i, arr) { return arr.indexOf(id) === i; });
     return '<h5>相關節點</h5>' + chips(ids);
@@ -130,9 +175,11 @@
       if (d.durability) h += '<span class="badge ok">耐久度 ' + d.durability + '</span>';
       h += '</div>';
       h += '<dl class="kv"><dt>碰撞</dt><dd>' + esc(d.collision) + '</dd>' + (d.sde ? '<dt>SDE</dt><dd>' + esc(d.sde) + '</dd>' : '') + '</dl>';
+      h += focusBtn(n);
       h += '<p>' + esc(d.desc) + '</p>';
-      h += reading(d.notionReading, 'notion', 'Notion 讀數');
-      h += reading(d.publicReading, 'public', '公開讀數');
+      if (A.facts && A.facts[n.id]) h += factsSection(n.id);
+      else { h += reading(d.notionReading, 'notion', 'Notion 讀數'); h += reading(d.publicReading, 'public', '公開讀數'); }
+      h += relSections(n);
       if (d.triggers && d.triggers.length) h += '<h5>物理觸發（非價位）</h5><ul class="plain">' + d.triggers.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
       if (d.controllers && d.controllers.length) {
         h += '<h5>控制者（Layer B，公開資料）</h5><table>' + d.controllers.map(function (c) { return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.role) + '</td><td>' + esc(c.share) + '</td></tr>'; }).join('') + '</table>';
@@ -143,8 +190,9 @@
     } else if (n.type === 'flow') {
       h += '<dl class="kv"><dt>驅動力</dt><dd>' + esc(d.driver) + '</dd><dt>年規模</dt><dd>' + esc(d.scale) + '</dd></dl>';
       if (d.note) h += '<p>' + esc(d.note) + '</p>';
+      h += focusBtn(n);
       h += reading(d.reading, 'public', '公開讀數');
-      h += '<h5>撞上的瓶頸</h5>' + chips(n.links.filter(function (id) { return N[id].type === 'bottleneck' || N[id].type === 'thermo'; }));
+      h += relSections(n);
     } else if (n.type === 'layer') {
       var row = A.matrix.rows.filter(function (r) { return r.layer === n.id; })[0];
       if (row) h += '<h5>碰撞矩陣列</h5><table>' + row.cells.map(function (c, i) { return '<tr><td>' + esc(A.matrix.cols[i]) + '</td><td>' + esc(c) + '</td></tr>'; }).join('') + '</table>';
@@ -160,11 +208,12 @@
       h += related(n);
     } else if (n.type === 'pipe') {
       h += '<dl class="kv"><dt>誰在用</dt><dd>' + esc(d.who) + '</dd><dt>儀表</dt><dd>' + esc(d.gauge) + '</dd><dt>覆蓋率</dt><dd>' + esc(d.dir) + '</dd></dl>';
+      h += focusBtn(n);
       h += reading({ text: d.publicText, source: d.source, url: d.url }, 'public', '公開讀數');
-      h += related(n);
+      h += relSections(n);
       h += '<div class="notion-ref">Notion：DOC-9 §9.2 分子管道地圖</div>';
     } else if (n.type === 'source' || n.type === 'tenant') {
-      h += '<p>' + esc(d.desc) + '</p>' + related(n);
+      h += focusBtn(n) + '<p>' + esc(d.desc) + '</p>' + relSections(n) + (n.type === 'source' ? '<h5>接錯節點</h5>' + chips(n.links.filter(function (id) { return N[id].type === 'misnode'; })) : '');
     } else if (n.type === 'dim') {
       h += '<dl class="kv"><dt>問什麼</dt><dd>' + esc(d.q) + '</dd><dt>載體</dt><dd>' + esc(d.carrier) + '</dd><dt>狀態</dt><dd>' + esc(d.status) + '</dd><dt>失效模式</dt><dd>' + esc(d.fail) + '</dd></dl>';
       h += '<div class="notion-ref">Notion：DOC-9 §9.1 分子四維台帳</div>';
@@ -174,8 +223,14 @@
     panel.scrollTop = 0;
   }
   document.addEventListener('click', function (ev) {
-    var go = ev.target.closest && ev.target.closest('[data-go]');
-    if (go) { ev.preventDefault(); select(go.getAttribute('data-go')); }
+    var t = ev.target.closest ? ev.target : null;
+    if (!t) return;
+    var el;
+    if ((el = t.closest('[data-focus-full]'))) { ev.preventDefault(); showView('graph'); graph.focus(el.getAttribute('data-focus-full'), true); return; }
+    if ((el = t.closest('[data-focus]'))) { ev.preventDefault(); showView('graph'); setHash('graph', el.getAttribute('data-focus')); graph.focus(el.getAttribute('data-focus'), false); return; }
+    if ((el = t.closest('[data-story]'))) { ev.preventDefault(); showView('graph'); graph.story(el.getAttribute('data-story')); return; }
+    if ((el = t.closest('[data-exit]'))) { ev.preventDefault(); graph.exitMode(); setHash('graph', null); return; }
+    if ((el = t.closest('[data-go]'))) { ev.preventDefault(); select(el.getAttribute('data-go')); }
   });
   function select(id, fromHash) {
     var n = N[id];
@@ -187,26 +242,13 @@
     flow.highlight(id);
   }
 
-  /* ───────── 圖譜（力導向，SVG） ───────── */
+  /* ───────── 圖譜（力導向，SVG；有方向的關係邊；依賴鏈聚焦；故事線） ───────── */
   var graph = (function () {
-    var svg = $('#graphSvg'), g, edgeLayer, nodeLayer, built = false;
-    var W = 1200, H = 900, nodes = [], visibleTypes = {};
-    var tx = 0, ty = 0, scale = 1, curEdges = [];
-    function pathD(a, b) {
-      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - Math.abs(b.x - a.x) * .08;
-      return 'M' + a.x + ',' + a.y + ' Q' + mx + ',' + my + ' ' + b.x + ',' + b.y;
-    }
-    function toSvg(clientX, clientY) {
-      var rect = svg.getBoundingClientRect(), s = rect.width / W;
-      return { x: ((clientX - rect.left) / s - tx) / scale, y: ((clientY - rect.top) / s - ty) / scale };
-    }
-    function moveNode(n, x, y) {
-      n.x = x; n.y = y;
-      n.el.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
-      curEdges.forEach(function (e) { if (e.a === n.id || e.b === n.id) e.el.setAttribute('d', pathD(e.na, e.nb)); });
-    }
-    Object.keys(TYPES).forEach(function (t) { visibleTypes[t] = t !== 'dim' && t !== 'misnode' ? true : true; });
-    visibleTypes.dim = false;
+    var svg = $('#graphSvg'), g, edgeLayer, nodeLayer, colsLayer, built = false;
+    var W = 1200, H = 900, nodes = [], byId = {}, visibleTypes = {}, curEdges = [];
+    var tx = 0, ty = 0, scale = 1;
+    var mode = null; /* null | { kind: 'focus', root, full } | { kind: 'story', id } */
+    Object.keys(TYPES).forEach(function (t) { visibleTypes[t] = t !== 'dim'; });
 
     function radius(n) {
       if (n.type === 'bottleneck') return n.d.tier === 1 ? 15 : n.d.tier === 2 ? 12 : 9;
@@ -219,9 +261,24 @@
     }
     function colX(c) { return 80 + c * ((W - 320) / 6); }
     function anchorX(n, i) { var x = colX(TYPES[n.type].col); if (n.type === 'bottleneck' || n.type === 'thermo') x += (i % 3 - 1) * 95; if (n.type === 'thread') x += (i % 2) * 20; return x; }
+    function endPoint(a, b) { var dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1, r = b.r + 5; return { x: b.x - dx / d * r, y: b.y - dy / d * r }; }
+    function pathD(a, b) {
+      var p = endPoint(a, b), mx = (a.x + p.x) / 2, my = (a.y + p.y) / 2 - Math.abs(p.x - a.x) * .08;
+      return 'M' + a.x + ',' + a.y + ' Q' + mx + ',' + my + ' ' + p.x + ',' + p.y;
+    }
+    function toSvg(clientX, clientY) {
+      var rect = svg.getBoundingClientRect(), s = rect.width / W;
+      return { x: ((clientX - rect.left) / s - tx) / scale, y: ((clientY - rect.top) / s - ty) / scale };
+    }
+    function moveNode(n, x, y) {
+      n.x = x; n.y = y;
+      n.el.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+      curEdges.forEach(function (e) { if (e.a === n.id || e.b === n.id) e.el.setAttribute('d', pathD(e.na, e.nb)); });
+    }
 
     function layout() {
       nodes = order.filter(function (n) { return visibleTypes[n.type]; });
+      byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
       var byCol = {};
       nodes.forEach(function (n) { var c = TYPES[n.type].col; (byCol[c] = byCol[c] || []).push(n); });
       Object.keys(byCol).forEach(function (c) {
@@ -233,31 +290,24 @@
           n.vx = 0; n.vy = 0; n.r = radius(n);
         });
       });
-      var idx = {}; nodes.forEach(function (n) { idx[n.id] = n; });
-      var edges = E.filter(function (e) { return idx[e.a] && idx[e.b]; });
-      // 力模擬（同步跑固定步數）
+      var edges = E.filter(function (e) { return byId[e.a] && byId[e.b]; });
       for (var it = 0; it < 360; it++) {
         var alpha = 1 - it / 360, k = .012 + .03 * alpha;
-        // 斥力
         for (var i = 0; i < nodes.length; i++) {
           var a = nodes[i];
           for (var j = i + 1; j < nodes.length; j++) {
             var b = nodes[j], dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy + 1, d = Math.sqrt(d2);
             var min = a.r + b.r + 30;
-            var f = (d < min ? (min - d) * .45 : 0) + 1400 / d2;
-            f *= alpha;
+            var f = ((d < min ? (min - d) * .45 : 0) + 1400 / d2) * alpha;
             var fx = dx / d * f, fy = dy / d * f;
             a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
           }
         }
-        // 彈簧
         edges.forEach(function (e) {
-          var a = idx[e.a], b = idx[e.b], dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) + .01;
-          var target = 120 + (a.r + b.r);
-          var f = (d - target) * .006 * alpha;
+          var a = byId[e.a], b = byId[e.b], dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) + .01;
+          var target = 120 + (a.r + b.r), f = (d - target) * .006 * alpha;
           a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
         });
-        // 欄位錨定 + 邊界
         nodes.forEach(function (n) {
           n.vx += (n.ax - n.x) * k;
           n.vy += (H / 2 - n.y) * .002 * alpha;
@@ -265,58 +315,172 @@
           n.x = Math.max(40, Math.min(W - 40, n.x)); n.y = Math.max(40, Math.min(H - 20, n.y));
         });
       }
+      nodes.forEach(function (n) { n.bx = n.x; n.by = n.y; });
       return edges;
     }
 
     function build() {
       svg.innerHTML = '';
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      var defs = svgEl('defs', {}, svg);
+      [['arrow', 'var(--text-mute)'], ['arrow-hot', 'var(--accent)'], ['arrow-warn', 'var(--warn)']].forEach(function (m) {
+        var mk = svgEl('marker', { id: 'mk-' + m[0], viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse' }, defs);
+        svgEl('path', { d: 'M0,1 L9,5 L0,9 z', fill: m[1] }, mk);
+      });
       g = svgEl('g', {}, svg);
-      var cols = svgEl('g', {}, g);
+      colsLayer = svgEl('g', { 'class': 'gcols' }, g);
       [['分子側來源', 0], ['融資管道', 1], ['承載者', 2], ['信用流', 3], ['物理瓶頸', 4], ['瓶頸層', 5], ['THREADS', 6]].forEach(function (c) {
-        var t = svgEl('text', { x: colX(c[1]), y: 18, 'class': 'gcol-label' }, cols); t.textContent = c[0];
+        var t = svgEl('text', { x: colX(c[1]), y: 18, 'class': 'gcol-label' }, colsLayer); t.textContent = c[0];
       });
       edgeLayer = svgEl('g', {}, g); nodeLayer = svgEl('g', {}, g);
       var edges = layout();
-      var idx = {}; nodes.forEach(function (n) { idx[n.id] = n; });
       curEdges = edges;
       edges.forEach(function (e) {
-        e.na = idx[e.a]; e.nb = idx[e.b];
-        e.el = svgEl('path', { d: pathD(e.na, e.nb), 'class': 'gedge ' + e.kind, 'data-a': e.a, 'data-b': e.b }, edgeLayer);
+        e.na = byId[e.a]; e.nb = byId[e.b];
+        var attrs = { d: pathD(e.na, e.nb), 'class': 'gedge ' + e.rel + ' s-' + e.strength, 'data-a': e.a, 'data-b': e.b };
+        if (REL[e.rel].dir) attrs['marker-end'] = 'url(#mk-' + (e.rel === 'migrates_to' ? 'arrow-warn' : 'arrow') + ')';
+        e.el = svgEl('path', attrs, edgeLayer);
       });
       nodes.forEach(function (n) {
-        var gn = svgEl('g', { 'class': 'gnode', transform: 'translate(' + n.x + ',' + n.y + ')', 'data-id': n.id }, nodeLayer);
+        var gn = svgEl('g', { 'class': 'gnode t-' + n.type, transform: 'translate(' + n.x + ',' + n.y + ')', 'data-id': n.id }, nodeLayer);
         var fill = TYPES[n.type].color;
         svgEl('circle', { r: n.r, fill: fill, 'fill-opacity': n.type === 'thermo' ? .35 : .85, stroke: fill }, gn);
         if (n.type === 'bottleneck' && n.d.tier === 1) svgEl('circle', { r: n.r + 4, fill: 'none', stroke: fill, 'stroke-opacity': .5, 'stroke-dasharray': '3 2' }, gn);
         var t = svgEl('text', { x: n.r + 4, y: 4 }, gn);
-        t.textContent = n.label.length > 16 ? n.label.slice(0, 15) + '…' : n.label;
+        n.short = n.label.length > 16 ? n.label.slice(0, 15) + '…' : n.label;
+        t.textContent = n.short; n.textEl = t;
         n.el = gn;
         gn.addEventListener('click', function (ev) { ev.stopPropagation(); });
+        gn.addEventListener('dblclick', function (ev) { ev.stopPropagation(); ev.preventDefault(); setHash('graph', n.id); focus(n.id, false); });
         gn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); ev.preventDefault(); startNodeDrag(n, ev.clientX, ev.clientY); });
         gn.addEventListener('touchstart', function (ev) { if (ev.touches.length === 1) { ev.stopPropagation(); startNodeDrag(n, ev.touches[0].clientX, ev.touches[0].clientY); } }, { passive: true });
       });
+      mode = null; tx = 0; ty = 0; scale = 1;
       applyTransform();
       built = true;
       $('#graphStats').textContent = '節點 ' + nodes.length + ' · 邊 ' + edges.length + '\nNotion DOC-3 ' + A.notionAsOf.doc3 + '\nDOC-9 ' + A.notionAsOf.doc9 + ' · DOC-8 ' + A.notionAsOf.doc8 + '\n公開資料 ' + A.asOf;
+      renderStoryBar();
+      setModeUI();
       if (state.id) highlight(state.id);
     }
     function applyTransform() { if (g) g.setAttribute('transform', 'translate(' + tx + ',' + ty + ') scale(' + scale + ')'); }
 
-    // 節點拖曳：落在節點上只動那一個節點，連線跟著動；位移很小就當作點擊
-    var nodeDrag = null;
-    function startNodeDrag(n, cx, cy) {
-      var p = toSvg(cx, cy);
-      nodeDrag = { n: n, dx: n.x - p.x, dy: n.y - p.y, sx: cx, sy: cy, moved: false };
-      n.el.classList.add('drag');
+    /* ── 顯示集合與欄位排版（聚焦 / 故事線共用） ── */
+    function setVisible(set) {
+      nodes.forEach(function (n) { n.el.classList.toggle('hidden', !!set && !set.has(n.id)); });
+      curEdges.forEach(function (e) { e.el.classList.toggle('hidden', !!set && !(set.has(e.a) && set.has(e.b))); });
+      colsLayer.classList.toggle('hidden', !!set);
     }
+    function placeColumns(cols) {
+      var Wv = W * .58, n = cols.length, gap = Math.min(230, (Wv - 160) / Math.max(1, n - 1));
+      var x0 = Wv / 2 - gap * (n - 1) / 2;
+      cols.forEach(function (ids, ci) {
+        var step = Math.min(110, (H - 140) / Math.max(1, ids.length)), y0 = H / 2 - step * (ids.length - 1) / 2;
+        ids.forEach(function (id, i) { var nd = byId[id]; if (nd) moveNode(nd, x0 + ci * gap, y0 + i * step); });
+      });
+    }
+    function setModeUI() {
+      var b = $('#graphExit'), m = $('#graphMode');
+      if (b) b.hidden = !mode;
+      if (m) m.textContent = !mode ? '' : mode.kind === 'focus' ? '依賴鏈聚焦：' + (byId[mode.root] ? byId[mode.root].label : mode.root) : '故事線：' + (A.stories.filter(function (s) { return s.id === mode.id; })[0] || {}).name;
+      $$('#storyBar .chip').forEach(function (c) { c.classList.toggle('active', !!mode && mode.kind === 'story' && c.getAttribute('data-story') === mode.id); });
+    }
+
+    /* ── 依賴鏈聚焦 ── */
+    function chainMaps(root, depth) {
+      var up = {}, down = {}, frontier, hop;
+      frontier = [root];
+      for (hop = 0; hop < depth && frontier.length; hop++) {
+        var next = [];
+        frontier.forEach(function (id) { upstreamOf(id).forEach(function (e) { if (byId[e.up] && e.up !== root && up[e.up] === undefined) { up[e.up] = hop + 1; next.push(e.up); } }); });
+        frontier = next;
+      }
+      frontier = [root];
+      for (hop = 0; hop < depth && frontier.length; hop++) {
+        var next2 = [];
+        frontier.forEach(function (id) { downstreamOf(id).forEach(function (e) { if (byId[e.down] && e.down !== root && down[e.down] === undefined && up[e.down] === undefined) { down[e.down] = hop + 1; next2.push(e.down); } }); });
+        frontier = next2;
+      }
+      return { up: up, down: down };
+    }
+    function focus(id, full) {
+      if (!built) build();
+      if (!byId[id]) { select(id); return; }
+      var depth = full ? 99 : 2, m = chainMaps(id, depth);
+      var upH = {}, downH = {}, maxUp = 0, maxDown = 0;
+      Object.keys(m.up).forEach(function (k) { var h = m.up[k]; (upH[h] = upH[h] || []).push(k); if (h > maxUp) maxUp = h; });
+      Object.keys(m.down).forEach(function (k) { var h = m.down[k]; (downH[h] = downH[h] || []).push(k); if (h > maxDown) maxDown = h; });
+      var cols = [];
+      for (var h = maxUp; h >= 1; h--) cols.push(upH[h] || []);
+      cols.push([id]);
+      for (h = 1; h <= maxDown; h++) cols.push(downH[h] || []);
+      var all = new Set([id]); Object.keys(m.up).forEach(function (k) { all.add(k); }); Object.keys(m.down).forEach(function (k) { all.add(k); });
+      mode = { kind: 'focus', root: id, full: !!full };
+      placeColumns(cols); setVisible(all);
+      tx = 0; ty = 0; scale = 1; applyTransform();
+      setModeUI();
+      renderFocusPanel(id, m, !!full);
+      highlight(null);
+      byId[id].el.classList.add('selected');
+    }
+    function renderFocusPanel(id, m, full) {
+      var n = byId[id];
+      var fullCount = (function () { var c = chainMaps(id, 99); return Object.keys(c.up).length + Object.keys(c.down).length + 1; })();
+      var shown = Object.keys(m.up).length + Object.keys(m.down).length + 1;
+      function list(map, sym) {
+        var keys = Object.keys(map).sort(function (a, b) { return map[a] - map[b]; });
+        return keys.length ? '<ul class="rels">' + keys.map(function (k) { return '<li><span class="rel hop">' + sym + map[k] + '</span> <span class="chip" data-go="' + esc(k) + '">' + esc(byId[k].label) + '</span></li>'; }).join('') + '</ul>' : '<p><small>無</small></p>';
+      }
+      var h = '<div class="type">依賴鏈聚焦</div><h3>' + esc(n.label) + '</h3>';
+      h += '<p>上游 ' + Object.keys(m.up).length + ' 個、下游 ' + Object.keys(m.down).length + ' 個（深度 ' + (full ? '全部' : '2 跳') + '）。' + (!full && fullCount > shown ? '完整鏈共 ' + fullCount + ' 個節點。' : '') + '</p>';
+      h += '<div class="btn-row"><button type="button" class="btn-focus ghost" data-exit>← 返回全圖</button>' + (!full && fullCount > shown ? '<button type="button" class="btn-focus" data-focus-full="' + esc(id) + '">展開完整鏈</button>' : '') + '</div>';
+      h += '<h5>上游 · 它依賴誰、被誰限制</h5>' + list(m.up, '↑');
+      h += '<h5>下游 · 誰依賴它、被它限制</h5>' + list(m.down, '↓');
+      h += '<p class="fig-note">點任一節點看細節；雙擊圖上任一節點可改以它為根重新聚焦。方向依關係邊：依賴、供應、促成、限制、遷移、融資、支出、撞上。</p>';
+      panelBody.innerHTML = h; panel.hidden = false; panel.scrollTop = 0;
+    }
+
+    /* ── 故事線 ── */
+    function story(sid) {
+      if (!built) build();
+      var s = A.stories.filter(function (x) { return x.id === sid; })[0];
+      if (!s) return;
+      var ids = s.nodes.filter(function (id) { return byId[id]; });
+      var Wv = W * .58, PER = 4, DX = (Wv - 200) / (PER - 1), DY = 200, rows = Math.ceil(ids.length / PER), y0 = H / 2 - DY * (rows - 1) / 2;
+      ids.forEach(function (id, i) {
+        var row = Math.floor(i / PER), col = i % PER, x = 100 + (row % 2 === 0 ? col : PER - 1 - col) * DX;
+        moveNode(byId[id], x, y0 + row * DY);
+        byId[id].textEl.textContent = (i + 1) + ' · ' + byId[id].short;
+      });
+      mode = { kind: 'story', id: sid };
+      setVisible(new Set(ids));
+      tx = 0; ty = 0; scale = 1; applyTransform();
+      setModeUI(); highlight(null);
+      var h = '<div class="type">故事線</div><h3>' + esc(s.name) + '</h3><p>' + esc(s.desc) + '</p>';
+      h += '<div class="btn-row"><button type="button" class="btn-focus ghost" data-exit>← 返回全圖</button></div>';
+      h += '<h5>順序</h5><ol class="story-steps">' + ids.map(function (id) { return '<li><span class="chip" data-go="' + esc(id) + '">' + esc(byId[id].label) + '</span></li>'; }).join('') + '</ol>';
+      panelBody.innerHTML = h; panel.hidden = false; panel.scrollTop = 0;
+    }
+    function exitMode() {
+      if (!mode) { closePanel(); highlight(null); return; }
+      mode = null;
+      nodes.forEach(function (n) { n.textEl.textContent = n.short; moveNode(n, n.bx, n.by); });
+      setVisible(null); setModeUI(); closePanel(); highlight(null);
+    }
+    function renderStoryBar() {
+      var bar = $('#storyBar'); if (!bar) return;
+      bar.innerHTML = '<span class="story-label">故事線</span>' + A.stories.map(function (s) { return '<button type="button" class="chip" data-story="' + esc(s.id) + '">' + esc(s.name) + '</button>'; }).join('');
+    }
+
+    /* ── 節點拖曳 ── */
+    var nodeDrag = null;
+    function startNodeDrag(n, cx, cy) { var p = toSvg(cx, cy); nodeDrag = { n: n, dx: n.x - p.x, dy: n.y - p.y, sx: cx, sy: cy, moved: false }; n.el.classList.add('drag'); }
     function moveNodeDrag(cx, cy) {
       if (!nodeDrag) return;
       if (Math.abs(cx - nodeDrag.sx) + Math.abs(cy - nodeDrag.sy) > 4) nodeDrag.moved = true;
       if (!nodeDrag.moved) return;
       var p = toSvg(cx, cy);
-      var x = Math.max(20, Math.min(W - 20, p.x + nodeDrag.dx)), y = Math.max(20, Math.min(H - 20, p.y + nodeDrag.dy));
-      moveNode(nodeDrag.n, x, y);
+      moveNode(nodeDrag.n, Math.max(20, Math.min(W - 20, p.x + nodeDrag.dx)), Math.max(20, Math.min(H - 20, p.y + nodeDrag.dy)));
     }
     function endNodeDrag() {
       if (!nodeDrag) return;
@@ -324,7 +488,7 @@
       d.n.el.classList.remove('drag');
       if (!d.moved) select(d.n.id);
     }
-    // 平移 / 縮放（只在空白處）
+    /* ── 平移 / 縮放（空白處） ── */
     var drag = null;
     svg.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty }; svg.classList.add('dragging'); });
     window.addEventListener('mousemove', function (e) {
@@ -339,7 +503,6 @@
       var f = e.deltaY < 0 ? 1.12 : 1 / 1.12, ns = Math.max(.4, Math.min(4, scale * f));
       tx = px - (px - tx) * (ns / scale); ty = py - (py - ty) * (ns / scale); scale = ns; applyTransform();
     }, { passive: false });
-    // 觸控
     var touch = null;
     svg.addEventListener('touchstart', function (e) { if (e.touches.length === 1) touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: tx, ty: ty }; }, { passive: true });
     svg.addEventListener('touchmove', function (e) {
@@ -348,18 +511,23 @@
       if (!touch) return; var s = svg.getBoundingClientRect().width / W; tx = touch.tx + (e.touches[0].clientX - touch.x) / s; ty = touch.ty + (e.touches[0].clientY - touch.y) / s; applyTransform();
     }, { passive: true });
     svg.addEventListener('touchend', function () { endNodeDrag(); touch = null; });
-    svg.addEventListener('click', function () { closePanel(); highlight(null); setHash('graph', null); });
+    svg.addEventListener('click', function () { if (mode) return; closePanel(); highlight(null); setHash('graph', null); });
     $('#graphReset').addEventListener('click', function () { tx = 0; ty = 0; scale = 1; applyTransform(); });
+    var exitBtn = $('#graphExit'); if (exitBtn) exitBtn.addEventListener('click', function () { exitMode(); setHash('graph', null); });
 
     function highlight(id) {
       if (!built) return;
       var keep = null;
       if (id && N[id]) { keep = {}; keep[id] = 1; N[id].links.forEach(function (l) { keep[l] = 1; }); }
-      nodes.forEach(function (n) { n.el.classList.toggle('dim', !!keep && !keep[n.id]); n.el.classList.toggle('selected', n.id === id); });
-      $$('.gedge', edgeLayer).forEach(function (p) {
-        var a = p.getAttribute('data-a'), b = p.getAttribute('data-b');
-        var on = !!id && (a === id || b === id);
-        p.classList.toggle('hot', on); p.classList.toggle('dim', !!keep && !on);
+      nodes.forEach(function (n) {
+        n.el.classList.toggle('dim', !!keep && !keep[n.id]);
+        n.el.classList.toggle('selected', n.id === id);
+        n.el.classList.toggle('near', !!keep && !!keep[n.id] && n.id !== id);
+      });
+      curEdges.forEach(function (e) {
+        var on = !!id && (e.a === id || e.b === id);
+        e.el.classList.toggle('hot', on); e.el.classList.toggle('dim', !!keep && !on);
+        if (REL[e.rel].dir) e.el.setAttribute('marker-end', 'url(#mk-' + (on ? 'arrow-hot' : e.rel === 'migrates_to' ? 'arrow-warn' : 'arrow') + ')');
       });
     }
     function search(q) {
@@ -368,9 +536,8 @@
         var hit = q && (n.label.toLowerCase().indexOf(q) >= 0 || JSON.stringify(n.d).toLowerCase().indexOf(q) >= 0);
         n.el.classList.toggle('hit', !!hit); n.el.classList.toggle('dim', !!q && !hit);
       });
-      $$('.gedge', edgeLayer).forEach(function (p) { p.classList.toggle('dim', !!q); });
+      curEdges.forEach(function (e) { e.el.classList.toggle('dim', !!q); });
     }
-    // 圖例 + 類型開關
     var legend = $('#graphLegend');
     Object.keys(TYPES).forEach(function (t) {
       var l = document.createElement('label');
@@ -379,7 +546,7 @@
     });
     legend.addEventListener('change', function (e) { var t = e.target.getAttribute('data-type'); if (t) { visibleTypes[t] = e.target.checked; build(); } });
     $('#graphSearch').addEventListener('input', function (e) { search(e.target.value); });
-    return { ensure: function () { if (!built) build(); }, highlight: highlight, rebuild: build };
+    return { ensure: function () { if (!built) build(); }, highlight: highlight, rebuild: build, focus: focus, story: story, exitMode: exitMode };
   })();
 
   /* ───────── 分子端信用流向圖 ───────── */

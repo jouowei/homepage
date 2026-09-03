@@ -92,11 +92,20 @@ code { font-family:var(--mono); font-size:.85em; color:var(--text-dim); }
 .gnode.dim { opacity:.14; }
 .gnode.hit circle { stroke:var(--text); stroke-width:3; }
 .gnode.selected circle { stroke:var(--text); stroke-width:3.5; }
-.gedge { stroke:var(--text-mute); stroke-opacity:.35; fill:none; transition:stroke-opacity .2s; }
+.gedge { stroke:var(--text-mute); stroke-opacity:.35; fill:none; transition:stroke-opacity .2s; stroke-width:1.2; }
+.gedge.s-high { stroke-width:2; }
+.gedge.s-low { stroke-opacity:.22; }
+.gedge.constrains { stroke:var(--hot); stroke-opacity:.45; }
+.gedge.competes_with { stroke:var(--warn); stroke-dasharray:2 3; }
+.gedge.migrates_to { stroke:var(--warn); stroke-dasharray:6 3; stroke-width:2; stroke-opacity:.75; }
+.gedge.collides, .gedge.funds, .gedge.spends { stroke-dasharray:4 4; }
+.gedge.tracks { stroke-opacity:.15; }
+.gedge.contains { stroke-opacity:.12; }
+.gedge.hidden, .gnode.hidden, .gcols.hidden { display:none; }
+.gnode.t-thread text { opacity:0; transition:opacity .15s; }
+.gnode.t-thread:hover text, .gnode.t-thread.selected text, .gnode.t-thread.near text, .gnode.t-thread.hit text { opacity:1; }
 .gedge.dim { stroke-opacity:.05; }
 .gedge.hot { stroke:var(--accent); stroke-opacity:.9; }
-.gedge.flow { stroke-dasharray:4 4; }
-.gedge.migrate { stroke:var(--warn); stroke-opacity:.7; stroke-width:2; }
 .gcol-label { font-family:var(--mono); font-size:11px; letter-spacing:.1em; fill:var(--text-mute); text-anchor:middle; }
 
 /* ───────── 流向圖 ───────── */
@@ -208,3 +217,33 @@ code { font-family:var(--mono); font-size:.85em; color:var(--text-dim); }
 /* 頁尾 */
 .foot { display:flex; justify-content:space-between; padding:1rem 1.25rem; border-top:1px solid var(--line); color:var(--text-mute); font-size:.8rem; }
 #view-graph.active ~ .foot { display:none; }
+
+/* 圖譜模式列與故事線 */
+.graph-mode { align-self:center; font-family:var(--mono); font-size:.75rem; color:var(--accent); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:.35rem .6rem; max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.graph-mode:empty { display:none; }
+.graph-tools button#graphExit { width:auto; padding:0 .7rem; font-size:.85rem; }
+.storybar { position:absolute; left:.8rem; right:.8rem; bottom:.8rem; display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; pointer-events:none; }
+.storybar > * { pointer-events:auto; }
+.storybar .story-label { font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; color:var(--text-mute); margin-right:.3rem; }
+.storybar .chip { background:var(--surface); font-family:inherit; }
+.storybar .chip.active { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+.btn-row { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0 .8rem; }
+.btn-focus { display:inline-block; padding:.45rem .9rem; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:var(--bg); font:inherit; font-size:.85rem; font-weight:600; cursor:pointer; margin:.4rem 0 .6rem; }
+.btn-focus.ghost { background:transparent; color:var(--accent); }
+.btn-focus:hover { filter:brightness(1.08); }
+.rels { list-style:none; padding:0; margin:.2rem 0 .6rem; display:flex; flex-direction:column; gap:.35rem; }
+.rels li { font-size:.84rem; line-height:1.5; }
+.rels .rel { font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; color:var(--accent); border:1px solid var(--line); border-radius:4px; padding:.05rem .35rem; margin-right:.25rem; }
+.rels .rel.hop { color:var(--text-mute); }
+.rels .why { display:block; color:var(--text-dim); font-size:.8rem; margin-top:.1rem; padding-left:.2rem; }
+.facts { list-style:none; padding:0; margin:.2rem 0 .6rem; display:flex; flex-direction:column; gap:.45rem; }
+.facts li { font-size:.84rem; line-height:1.5; border-left:3px solid var(--ok); padding:.2rem .7rem; }
+.facts li b { color:var(--text); font-variant-numeric:tabular-nums; }
+.facts .src { display:block; font-family:var(--mono); font-size:.72rem; color:var(--text-mute); margin-top:.15rem; }
+.story-steps { padding-left:1.4rem; margin:.3rem 0; display:flex; flex-direction:column; gap:.35rem; font-size:.86rem; }
+/* 側欄開啟時，圖譜的工具列與故事線列往左讓位 */
+body:has(#panel:not([hidden])) .graph-tools { right: calc(min(420px, 100%) + .8rem); }
+body:has(#panel:not([hidden])) .storybar { right: calc(min(420px, 100%) + .8rem); }
+@media (max-width: 860px) {
+  body:has(#panel:not([hidden])) .graph-tools, body:has(#panel:not([hidden])) .storybar { right: .8rem; }
+}
