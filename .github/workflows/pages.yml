@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/notion-content-access-ll3g16]
+    branches: [claude/notion-content-access-ll3g16, claude/notion-access-check-9zarop]
   workflow_dispatch:
 
 permissions:
