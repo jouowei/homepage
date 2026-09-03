@@ -353,7 +353,7 @@
         gn.addEventListener('click', function (ev) { ev.stopPropagation(); });
         gn.addEventListener('dblclick', function (ev) { ev.stopPropagation(); ev.preventDefault(); setHash('graph', n.id); focus(n.id, false); });
         gn.addEventListener('mousedown', function (ev) { ev.stopPropagation(); ev.preventDefault(); startNodeDrag(n, ev.clientX, ev.clientY); });
-        gn.addEventListener('touchstart', function (ev) { if (ev.touches.length === 1) { ev.stopPropagation(); startNodeDrag(n, ev.touches[0].clientX, ev.touches[0].clientY); } }, { passive: true });
+        gn.addEventListener('touchstart', function (ev) { if (ev.touches.length === 1) startNodeDrag(n, ev.touches[0].clientX, ev.touches[0].clientY); }, { passive: true });
       });
       mode = null; tx = 0; ty = 0; scale = 1;
       applyTransform();
@@ -503,14 +503,43 @@
       var f = e.deltaY < 0 ? 1.12 : 1 / 1.12, ns = Math.max(.4, Math.min(4, scale * f));
       tx = px - (px - tx) * (ns / scale); ty = py - (py - ty) * (ns / scale); scale = ns; applyTransform();
     }, { passive: false });
-    var touch = null;
-    svg.addEventListener('touchstart', function (e) { if (e.touches.length === 1) touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: tx, ty: ty }; }, { passive: true });
-    svg.addEventListener('touchmove', function (e) {
-      if (e.touches.length !== 1) return;
-      if (nodeDrag) { moveNodeDrag(e.touches[0].clientX, e.touches[0].clientY); return; }
-      if (!touch) return; var s = svg.getBoundingClientRect().width / W; tx = touch.tx + (e.touches[0].clientX - touch.x) / s; ty = touch.ty + (e.touches[0].clientY - touch.y) / s; applyTransform();
+    // 觸控：單指平移或拖節點，雙指捏合縮放（以兩指中點為中心）
+    var touch = null, pinch = null;
+    function tdist(e) { var a = e.touches[0], b = e.touches[1]; return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY); }
+    function tmid(e) { var a = e.touches[0], b = e.touches[1]; return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }; }
+    svg.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) {
+        if (nodeDrag) { nodeDrag.n.el.classList.remove('drag'); nodeDrag = null; }
+        touch = null;
+        pinch = { d: tdist(e), mid: tmid(e), tx: tx, ty: ty, scale: scale };
+      } else if (e.touches.length === 1 && !nodeDrag) {
+        touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: tx, ty: ty };
+      }
     }, { passive: true });
-    svg.addEventListener('touchend', function () { endNodeDrag(); touch = null; });
+    svg.addEventListener('touchmove', function (e) {
+      if (e.touches.length === 2 && pinch) {
+        e.preventDefault();
+        var rect = svg.getBoundingClientRect(), s = rect.width / W;
+        var mid = tmid(e), ns = Math.max(.4, Math.min(4, pinch.scale * tdist(e) / pinch.d));
+        var px = (pinch.mid.x - rect.left) / s, py = (pinch.mid.y - rect.top) / s;
+        tx = px - (px - pinch.tx) * (ns / pinch.scale) + (mid.x - pinch.mid.x) / s;
+        ty = py - (py - pinch.ty) * (ns / pinch.scale) + (mid.y - pinch.mid.y) / s;
+        scale = ns; applyTransform();
+        return;
+      }
+      if (e.touches.length !== 1) return;
+      if (nodeDrag) { e.preventDefault(); moveNodeDrag(e.touches[0].clientX, e.touches[0].clientY); return; }
+      if (!touch) return;
+      e.preventDefault();
+      var s1 = svg.getBoundingClientRect().width / W;
+      tx = touch.tx + (e.touches[0].clientX - touch.x) / s1; ty = touch.ty + (e.touches[0].clientY - touch.y) / s1; applyTransform();
+    }, { passive: false });
+    svg.addEventListener('touchend', function (e) {
+      if (e.touches.length < 2) pinch = null;
+      if (e.touches.length === 0) { endNodeDrag(); touch = null; }
+      else if (e.touches.length === 1 && !nodeDrag) { touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: tx, ty: ty }; }
+    });
+    svg.addEventListener('touchcancel', function () { pinch = null; touch = null; if (nodeDrag) { nodeDrag.n.el.classList.remove('drag'); nodeDrag = null; } });
     svg.addEventListener('click', function () { if (mode) return; closePanel(); highlight(null); setHash('graph', null); });
     $('#graphReset').addEventListener('click', function () { tx = 0; ty = 0; scale = 1; applyTransform(); });
     var exitBtn = $('#graphExit'); if (exitBtn) exitBtn.addEventListener('click', function () { exitMode(); setHash('graph', null); });
