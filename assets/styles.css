@@ -616,3 +616,13 @@ a.lnk:hover .lnk-v { color: var(--accent); }
   .lnk { flex-direction: column; gap: 4px; }
   .lnk-k { width: auto; }
 }
+
+/* ───────────── atlas call-to-action ───────────── */
+.atlas-cta { margin: 2.2rem 0 0; display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
+.atlas-cta a {
+  display: inline-block; padding: .65rem 1.2rem; border-radius: 10px;
+  border: 1px solid var(--accent); color: var(--accent); font-weight: 600; text-decoration: none;
+  background: var(--surface); transition: background .15s, color .15s;
+}
+.atlas-cta a:hover { background: var(--accent); color: var(--bg); }
+.atlas-cta-note { color: var(--text-dim); font-size: .9rem; max-width: 60ch; }

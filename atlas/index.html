@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>瓶頸圖譜 · Chen-Wei Hsiung</title>
+<meta name="description" content="物理瓶頸 × 信用流的互動圖譜：分母側的物理瓶頸、分子側的信用流向、目前卡住的環節，以及追蹤它們的 thread。資料來自個人 Notion 知識庫與 2026-09 的公開資料。">
+<meta property="og:title" content="瓶頸圖譜">
+<meta property="og:description" content="在信用抵達之前，先看清它會撞上哪一道牆。">
+<link rel="stylesheet" href="atlas.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230d0f12'/><circle cx='30' cy='50' r='11' fill='%23d4884a'/><circle cx='70' cy='30' r='8' fill='%23e0603f'/><circle cx='70' cy='70' r='8' fill='%235f9e78'/><path d='M40 47l22-14M40 53l22 14' stroke='%23a7aeb8' stroke-width='4'/></svg>">
+<script>
+(function () {
+  var r = document.documentElement;
+  try {
+    var t = localStorage.getItem('cwh-theme');
+    if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="../" title="回首頁">CW<span class="brand-dot">.</span>H</a>
+  <span class="site-title">瓶頸圖譜 <small>Bottleneck Atlas</small></span>
+  <nav class="tabs" aria-label="視圖">
+    <a href="#graph" data-view="graph">圖譜</a>
+    <a href="#flow" data-view="flow">分子端信用流向</a>
+    <a href="#now" data-view="now">目前的瓶頸</a>
+    <a href="#threads" data-view="threads">Threads</a>
+    <a href="#sources" data-view="sources">來源</a>
+  </nav>
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="切換深淺色"><span class="theme-icon" aria-hidden="true"></span></button>
+</header>
+
+<main id="main">
+
+  <!-- ───────── 圖譜 ───────── -->
+  <section id="view-graph" class="view">
+    <aside class="graph-side">
+      <p class="hint">信用從左邊流進來，撞上中間的物理瓶頸；右邊是追蹤它們的 thread。箭頭指向下游。點節點看細節，點連線看兩點之間的關係，雙擊只留它的上下游依賴鏈，拖節點可移動，空白處拖曳平移、滾輪縮放。</p>
+      <label class="search"><input id="graphSearch" type="search" placeholder="搜尋節點（例：變壓器、HBM、租戶信用）" autocomplete="off"></label>
+      <div class="legend" id="graphLegend"></div>
+      <div class="graph-stats" id="graphStats"></div>
+    </aside>
+    <div class="graph-stage">
+      <svg id="graphSvg" role="img" aria-label="瓶頸圖譜"></svg>
+      <div class="graph-tools">
+        <span class="graph-mode" id="graphMode"></span>
+        <button type="button" id="graphExit" title="返回全圖" hidden>← 全圖</button>
+        <button type="button" id="graphReset" title="重置視角">⟲</button>
+      </div>
+      <div class="storybar" id="storyBar"></div>
+    </div>
+  </section>
+
+  <!-- ───────── 分子端信用流向 ───────── -->
+  <section id="view-flow" class="view">
+    <div class="wrap">
+      <header class="view-head">
+        <h1>分子端：信用怎麼流到瓶頸</h1>
+        <p class="lede" id="flowPrinciple"></p>
+      </header>
+      <div class="flow-stage">
+        <svg id="flowSvg" role="img" aria-label="分子端信用流向圖"></svg>
+      </div>
+      <p class="fig-note">線寬依公開資料的相對規模粗略示意，不是精確金額。管道上的燈號代表系統內有沒有接上儀表：✅ 有、🟡 有序列未接、🔴 無。點節點看細節。</p>
+
+      <h2>六段傳導鏈：閥門在租戶信用，不在產出價格</h2>
+      <ol class="chain" id="flowChain"></ol>
+      <p class="fig-note" id="flowChainNote"></p>
+
+      <h2>五種「接錯節點」：儀表為什麼讀起來正常</h2>
+      <div class="cards" id="flowMisnodes"></div>
+
+      <div class="two-col">
+        <div>
+          <h2>可抵押性分界</h2>
+          <div class="cards cards-2" id="flowFork"></div>
+        </div>
+        <div>
+          <h2>收租端鏡像</h2>
+          <div class="cards" id="flowRent"></div>
+        </div>
+      </div>
+
+      <h2>四個維度的台帳</h2>
+      <div class="table-wrap"><table class="tbl" id="flowDims"></table></div>
+
+      <h2>救援管道的三道閘門</h2>
+      <div class="cards cards-3" id="flowGates"></div>
+      <p class="callout" id="flowGatesNote"></p>
+
+      <div class="two-col">
+        <div>
+          <h2>融資側頂部：七訊號組合</h2>
+          <div class="card" id="flowTopform"></div>
+        </div>
+        <div>
+          <h2>分子側行為者自陳</h2>
+          <div class="card" id="flowWarsh"></div>
+          <h2>判別器象限</h2>
+          <div class="card" id="flowQuadrant"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── 目前的瓶頸 ───────── -->
+  <section id="view-now" class="view">
+    <div class="wrap">
+      <header class="view-head">
+        <h1>目前卡住的環節</h1>
+        <p class="lede">Notion 的裁決日期與公開資料的日期分開標示。燈號讀作「碰撞流數」，不是「當前緊缺度」。</p>
+      </header>
+      <div class="stats" id="nowStats"></div>
+
+      <h2>Tier 1 · 多重碰撞 + 長時鐘（每週盯）</h2>
+      <div class="cards" id="nowTier1"></div>
+      <h2>Tier 2 · 升溫中（月度盯）</h2>
+      <div class="cards" id="nowTier2"></div>
+      <h2>Tier 3 · 紅色碰撞但零覆蓋（盲區）</h2>
+      <div class="cards" id="nowTier3"></div>
+
+      <h2>瓶頸遷移接力</h2>
+      <ol class="relay" id="nowRelay"></ol>
+      <p class="callout" id="nowRelayRule"></p>
+      <div class="two-col">
+        <div>
+          <h3>偵測器：雙邊交期差</h3>
+          <div class="card" id="nowDetector"></div>
+        </div>
+        <div>
+          <h3>三種型別</h3>
+          <div class="cards" id="nowTypes"></div>
+        </div>
+      </div>
+      <h3>偵測器讀不到的六個具名盲區</h3>
+      <div class="cards cards-3" id="nowBlind"></div>
+
+      <h2>信用流 × 瓶頸層碰撞矩陣</h2>
+      <div class="table-wrap"><table class="tbl matrix" id="nowMatrix"></table></div>
+      <p class="fig-note" id="nowMatrixNote"></p>
+
+      <h2>系統自身的量測瓶頸</h2>
+      <p class="lede">分母側追的是「什麼印不出來」；這一段是「什麼量不到」。</p>
+      <div class="cards" id="nowGaps"></div>
+    </div>
+  </section>
+
+  <!-- ───────── Threads ───────── -->
+  <section id="view-threads" class="view">
+    <div class="wrap">
+      <header class="view-head">
+        <h1>Threads · 一條線一頁</h1>
+        <p class="lede">DOC-8 登記簿：每條 thread 一列，含領域、關鍵字、一句摘要與它掛住的瓶頸節點。摘要已去除任何持倉與價位。</p>
+      </header>
+      <label class="search"><input id="threadSearch" type="search" placeholder="篩選 thread（名稱、領域、關鍵字）" autocomplete="off"></label>
+      <div class="thread-list" id="threadList"></div>
+    </div>
+  </section>
+
+  <!-- ───────── 來源 ───────── -->
+  <section id="view-sources" class="view">
+    <div class="wrap">
+      <header class="view-head">
+        <h1>來源與邊界</h1>
+        <p class="lede" id="sourcesLede"></p>
+      </header>
+      <h2>Notion 知識庫（非公開）</h2>
+      <ul class="plain" id="sourcesNotion"></ul>
+      <h2>公開資料（2026-09-03 檢索）</h2>
+      <ul class="plain" id="sourcesPublic"></ul>
+      <h2>刻意排除</h2>
+      <ul class="plain">
+        <li>任何持倉、部位比例、股數、金額與帳戶結構。</li>
+        <li>任何進場價位、觸發價與買賣動作。</li>
+        <li>任何即時市場判讀或投資建議。本站只描述機制與量測。</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<aside id="panel" class="panel" aria-live="polite" hidden>
+  <button type="button" class="panel-close" id="panelClose" aria-label="關閉">×</button>
+  <div class="panel-body" id="panelBody"></div>
+</aside>
+
+<footer class="foot">
+  <span>瓶頸圖譜 · 資料截至 <span id="asOf"></span></span>
+  <a href="../">← 回首頁</a>
+</footer>
+
+<script src="data.js"></script>
+<script src="atlas.js"></script>
+</body>
+</html>
